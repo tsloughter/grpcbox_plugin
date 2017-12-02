@@ -1,0 +1,16 @@
+{application, grpcbox_plugin,
+ [{description, "Library for creating grpc servers in Erlang, based on the chatterbox http2 server"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib,
+    gpb
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, ["Tristan Sloughter"]},
+  {licenses, ["Apache 2.0"]},
+  {links, [{"Github", "https://github.com/tsloughter/grpcbox_plugin"}]}
+ ]}.

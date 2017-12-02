@@ -1,0 +1,7 @@
+{description, "Grpc server services template"}.
+{variables,
+ [{unmodified_service_name, [], "Original name of the service, as it'll appear in a request"},
+  {pb_module, "", "Name of protobuf module to get type specs from"},
+  {service_name, [], "Name of service"},
+  {methods, [], "List of methods for service"}]}.
+{template, "grpcbox_service.erl", "src/{{service_name}}_behaviour.erl"}.
