@@ -9,7 +9,7 @@
 
 {{#methods}}
 %% @doc {{^input_stream}}{{^output_stream}}Unary RPC{{/output_stream}}{{/input_stream}}
--callback {{method}}(ctx:ctx(), {{#input_stream}}grpcbox_stream:t(){{/input_stream}}{{^input_stream}}{{pb_module}}:'{{input}}'(){{/input_stream}}) ->
+-callback {{method}}({{^input_stream}}{{#output_stream}}grpcbox_stream:t(), {{pb_module}}:'{{input}}'(){{/output_stream}}{{/input_stream}}{{#input_stream}}{{^output_stream}}grpcbox_stream:t(){{/output_stream}}{{#output_stream}}grpcbox_stream:t(){{/output_stream}}{{/input_stream}}{{^input_stream}}{{^output_stream}}ctx:ctx(), {{pb_module}}:'{{input}}'(){{/output_stream}}{{/input_stream}}) ->
     {{#output_stream}}ok{{/output_stream}}{{^output_stream}}{ok, {{pb_module}}:'{{output}}'()}{{/output_stream}} | {error, term()}.
 
 {{/methods}}
