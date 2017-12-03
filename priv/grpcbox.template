@@ -4,4 +4,4 @@
   {pb_module, "", "Name of protobuf module to get type specs from"},
   {service_name, [], "Name of service"},
   {methods, [], "List of methods for service"}]}.
-{template, "grpcbox_service.erl", "src/{{service_name}}_behaviour.erl"}.
+{template, "grpcbox_service.erl", "src/{{service_name}}_bhvr.erl"}.
