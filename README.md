@@ -1,7 +1,7 @@
 grpcbox Plugin
 =====
 
-A rebar3 plugin for generating a behaviour per grpc service.
+A rebar3 plugin for generating a behaviour per grpc service, for use with [grpcbox](https://github.com/tsloughter/grpcbox).
 
 Build
 -----
@@ -9,7 +9,7 @@ Build
 ```
 $ rebar3 compile
 ```
-        
+
 Use
 ---
 
