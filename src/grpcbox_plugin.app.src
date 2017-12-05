@@ -1,5 +1,5 @@
 {application, grpcbox_plugin,
- [{description, "Library for creating grpc servers in Erlang, based on the chatterbox http2 server"},
+ [{description, "Rebar3 plugin to generate behaviours for grpc services"},
   {vsn, "0.1.0"},
   {registered, []},
   {applications,
