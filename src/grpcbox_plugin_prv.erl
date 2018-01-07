@@ -31,7 +31,7 @@ do(State) ->
     Config = rebar_state:opts(State),
     GrpcConfig = rebar_opts:get(Config, grpc, []),
     {Options, _} = rebar_state:command_parsed_args(State),
-    ProtosDir = proplists:get_value(protos, Options, rebar_opts:get(Config, protos, "priv/protos")),
+    ProtosDir = proplists:get_value(protos, Options, proplists:get_value(protos, GrpcConfig, "priv/protos")),
     GpbOpts = proplists:get_value(gpb_opts, GrpcConfig, []),
 
     [begin
@@ -63,7 +63,7 @@ gen_service_behaviour(GpbModule, Options, GrpcConfig, State) ->
                                   || {X, Y} <- maps:to_list(Method), X =/= opts]]
                                  || Method <- Methods]}]
                 end || S <- GpbModule:get_service_names()],
-    rebar_log:log(debug, "servies: ~p", [Services]),
+    rebar_log:log(debug, "services: ~p", [Services]),
     [rebar_templater:new("grpcbox", Service, Force, State) || Service <- Services].
 
 compile_pb(Filename, Options) ->
@@ -71,7 +71,7 @@ compile_pb(Filename, Options) ->
     ModuleNamePrefix = proplists:get_value(module_name_prefix, Options, ""),
     CompiledPB =  filename:join("src", ModuleNamePrefix++filename:basename(Filename, ".proto") ++ ModuleNameSuffix++".erl"),
     rebar_log:log(info, "Writing ~s", [CompiledPB]),
-    ok = gpb_compile:file(Filename, [use_packages, maps, type_specs, {i, "."}, {o, "src"} | Options]),
+    ok = gpb_compile:file(Filename, [use_packages, maps, type_specs, strings_as_binaries, {i, "."}, {o, "src"} | Options]),
     GpbInludeDir = filename:join(code:lib_dir(gpb), "include"),
     {ok, Module, Compiled} = compile:file(CompiledPB,
                                           [binary, {i, GpbInludeDir}]),
