@@ -50,18 +50,24 @@ maybe_rename(name) ->
 maybe_rename(N) ->
     N.
 
+unmodified_maybe_rename(name) ->
+    unmodified_method;
+unmodified_maybe_rename(N) ->
+    N.
+
 gen_service_behaviour(GpbModule, Options, GrpcConfig, State) ->
     Force = proplists:get_value(force, Options, true),
     ServicePrefix = proplists:get_value(prefix, GrpcConfig, ""),
     ServiceSuffix = proplists:get_value(suffix, GrpcConfig, ""),
     Services = [begin
                     {{_, Name}, Methods} = GpbModule:get_service_def(S),
-                    [{unmodified_service_name, atom_to_list(Name)},
+                    [{pb_module, atom_to_list(GpbModule)},
+                     {unmodified_service_name, atom_to_list(Name)},
                      {service_name, ServicePrefix++list_snake_case(atom_to_list(Name))++ServiceSuffix},
-                     {methods, [[{pb_module, atom_to_list(GpbModule)}
-                                 | [{maybe_rename(X), maybe_snake_case(X, atom_to_list(Y))}
-                                  || {X, Y} <- maps:to_list(Method), X =/= opts]]
-                                 || Method <- Methods]}]
+                     {methods, [lists:flatten([[{maybe_rename(X), maybe_snake_case(X, atom_to_list(Y))},
+                                                   {unmodified_maybe_rename(X), atom_to_list(Y)}]
+                                               || {X, Y} <- maps:to_list(Method), X =/= opts])
+                                || Method <- Methods]}]
                 end || S <- GpbModule:get_service_names()],
     rebar_log:log(debug, "services: ~p", [Services]),
     [rebar_templater:new("grpcbox", Service, Force, State) || Service <- Services].

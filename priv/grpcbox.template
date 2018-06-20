@@ -5,3 +5,4 @@
   {service_name, [], "Name of service"},
   {methods, [], "List of methods for service"}]}.
 {template, "grpcbox_service.erl", "src/{{service_name}}_bhvr.erl"}.
+{template, "grpcbox_service_client.erl", "src/{{service_name}}_client.erl"}.
