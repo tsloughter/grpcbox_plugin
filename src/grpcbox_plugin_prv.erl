@@ -56,12 +56,14 @@ unmodified_maybe_rename(N) ->
     N.
 
 gen_service_behaviour(GpbModule, Options, GrpcConfig, State) ->
+    OutDir = proplists:get_value(out_dir, GrpcConfig, "src"),
     Force = proplists:get_value(force, Options, true),
     ServicePrefix = proplists:get_value(prefix, GrpcConfig, ""),
     ServiceSuffix = proplists:get_value(suffix, GrpcConfig, ""),
     Services = [begin
                     {{_, Name}, Methods} = GpbModule:get_service_def(S),
-                    [{pb_module, atom_to_list(GpbModule)},
+                    [{out_dir, OutDir},
+                     {pb_module, atom_to_list(GpbModule)},
                      {unmodified_service_name, atom_to_list(Name)},
                      {service_name, ServicePrefix++list_snake_case(atom_to_list(Name))++ServiceSuffix},
                      {methods, [lists:flatten([[{maybe_rename(X), maybe_snake_case(X, atom_to_list(Y))},
@@ -73,14 +75,15 @@ gen_service_behaviour(GpbModule, Options, GrpcConfig, State) ->
     [rebar_templater:new("grpcbox", Service, Force, State) || Service <- Services].
 
 compile_pb(Filename, Options) ->
+    OutDir = proplists:get_value(o, Options, "src"),
     ModuleNameSuffix = proplists:get_value(module_name_suffix, Options, ""),
     ModuleNamePrefix = proplists:get_value(module_name_prefix, Options, ""),
-    CompiledPB =  filename:join("src", ModuleNamePrefix++filename:basename(Filename, ".proto") ++ ModuleNameSuffix++".erl"),
+    CompiledPB =  filename:join(OutDir, ModuleNamePrefix++filename:basename(Filename, ".proto") ++ ModuleNameSuffix++".erl"),
     rebar_log:log(info, "Writing ~s", [CompiledPB]),
     ok = gpb_compile:file(Filename, [{rename,{msg_name,snake_case}},
                                      {rename,{msg_fqname,base_name}},
                                      use_packages, maps, type_specs,
-                                     strings_as_binaries, {i, "."}, {o, "src"} | Options]),
+                                     strings_as_binaries, {i, "."}, {o, OutDir} | Options]),
     GpbInludeDir = filename:join(code:lib_dir(gpb), "include"),
     {ok, Module, Compiled} = compile:file(CompiledPB,
                                           [binary, {i, GpbInludeDir}]),
