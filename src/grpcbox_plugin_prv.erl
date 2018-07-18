@@ -2,6 +2,8 @@
 
 -export([init/1, do/1, format_error/1]).
 
+-include_lib("providers/include/providers.hrl").
+
 -define(PROVIDER, gen).
 -define(NAMESPACE, grpc).
 -define(DEPS, [{default, app_discovery}]).
@@ -42,6 +44,13 @@ do(State) ->
     {ok, State}.
 
 -spec format_error(any()) ->  iolist().
+format_error({compile_errors, Errors, Warnings}) ->
+    [begin
+         rebar_api:warn("Warning building ~s~n", [File]),
+         [rebar_api:warn("        ~p: ~s", [Line, M:format_error(E)]) || {Line, M, E} <- Es]
+     end || {File, Es} <- Warnings],
+    [[io_lib:format("Error building ~s~n", [File]) |
+         [io_lib:format("        ~p: ~s", [Line, M:format_error(E)]) || {Line, M, E} <- Es]] || {File, Es} <- Errors];
 format_error(Reason) ->
     io_lib:format("~p", [Reason]).
 
@@ -85,10 +94,21 @@ compile_pb(Filename, Options) ->
                                      use_packages, maps, type_specs,
                                      strings_as_binaries, {i, "."}, {o, OutDir} | Options]),
     GpbInludeDir = filename:join(code:lib_dir(gpb), "include"),
-    {ok, Module, Compiled} = compile:file(CompiledPB,
-                                          [binary, {i, GpbInludeDir}]),
-    {module, _} = code:load_binary(Module, CompiledPB, Compiled),
-    Module.
+    case compile:file(CompiledPB,
+                      [binary, {i, GpbInludeDir}, return_errors]) of
+        {ok, Module, Compiled} ->
+            {module, _} = code:load_binary(Module, CompiledPB, Compiled),
+            Module;
+        {ok, Module, Compiled, Warnings} ->
+            [begin
+                 rebar_api:warn("Warning building ~s~n", [File]),
+                 [rebar_api:warn("        ~p: ~s", [Line, M:format_error(E)]) || {Line, M, E} <- Es]
+             end || {File, Es} <- Warnings],
+            {module, _} = code:load_binary(Module, CompiledPB, Compiled),
+            Module;
+        {error, Errors, Warnings} ->
+            throw(?PRV_ERROR({compile_errors, Errors, Warnings}))
+    end.
 
 maybe_snake_case(name, Name) ->
     list_snake_case(Name);

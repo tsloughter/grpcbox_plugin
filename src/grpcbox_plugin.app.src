@@ -2,7 +2,7 @@
              [{description,"Rebar3 plugin to generate behaviours for grpc services"},
               {vsn,"0.2.0"},
               {registered,[]},
-              {applications,[kernel,stdlib,gpb]},
+              {applications,[kernel,stdlib,gpb,providers]},
               {env,[]},
               {modules,[]},
               {maintainers,["Tristan Sloughter"]},
