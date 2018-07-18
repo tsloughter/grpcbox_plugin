@@ -10,7 +10,7 @@
 -compile([nowarn_export_all]).
 -compile([export_all]).
 
--include("grpcbox.hrl").
+-include_lib("grpcbox/include/grpcbox.hrl").
 
 -define(SERVICE, '{{unmodified_service_name}}').
 -define(PROTO_MODULE, '{{pb_module}}').
