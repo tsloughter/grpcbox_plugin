@@ -91,7 +91,7 @@ compile_pb(Filename, Options) ->
     rebar_log:log(info, "Writing ~s", [CompiledPB]),
     ok = gpb_compile:file(Filename, [{rename,{msg_name,snake_case}},
                                      {rename,{msg_fqname,base_name}},
-                                     use_packages, maps, type_specs,
+                                     use_packages, maps,
                                      strings_as_binaries, {i, "."}, {o, OutDir} | Options]),
     GpbInludeDir = filename:join(code:lib_dir(gpb), "include"),
     case compile:file(CompiledPB,
