@@ -35,9 +35,10 @@ do(State) ->
     {Options, _} = rebar_state:command_parsed_args(State),
     ProtosDir = proplists:get_value(protos, Options, proplists:get_value(protos, GrpcConfig, "priv/protos")),
     GpbOpts = proplists:get_value(gpb_opts, GrpcConfig, []),
+    GrpcOutDir = proplists:get_value(out_dir, GrpcConfig, "src"),
 
     [begin
-         GpbModule = compile_pb(Filename, GpbOpts),
+         GpbModule = compile_pb(Filename, GrpcOutDir, GpbOpts),
          gen_service_behaviour(GpbModule, Options, GrpcConfig, State)
      end || Filename <- filelib:wildcard(filename:join(ProtosDir, "*.proto"))],
 
@@ -83,8 +84,8 @@ gen_service_behaviour(GpbModule, Options, GrpcConfig, State) ->
     rebar_log:log(debug, "services: ~p", [Services]),
     [rebar_templater:new("grpcbox", Service, Force, State) || Service <- Services].
 
-compile_pb(Filename, Options) ->
-    OutDir = proplists:get_value(o, Options, "src"),
+compile_pb(Filename, GrpcOutDir, Options) ->
+    OutDir = proplists:get_value(o, Options, GrpcOutDir),
     ModuleNameSuffix = proplists:get_value(module_name_suffix, Options, ""),
     ModuleNamePrefix = proplists:get_value(module_name_prefix, Options, ""),
     CompiledPB =  filename:join(OutDir, ModuleNamePrefix++filename:basename(Filename, ".proto") ++ ModuleNameSuffix++".erl"),
