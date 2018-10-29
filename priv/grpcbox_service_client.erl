@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%% @doc Behaviour to implement for grpc service {{unmodified_service_name}}.
+%% @doc Client module for grpc service {{unmodified_service_name}}.
 %% @end
 %%%-------------------------------------------------------------------
 
