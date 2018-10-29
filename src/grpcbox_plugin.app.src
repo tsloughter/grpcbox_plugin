@@ -1,6 +1,6 @@
 {application,grpcbox_plugin,
              [{description,"Rebar3 plugin to generate behaviours for grpc services"},
-              {vsn,"0.3.0"},
+              {vsn,"git"},
               {registered,[]},
               {applications,[kernel,stdlib,gpb,providers]},
               {env,[]},
