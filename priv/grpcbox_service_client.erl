@@ -7,8 +7,8 @@
 
 -module({{service_name}}_client).
 
--compile([nowarn_export_all]).
--compile([export_all]).
+-compile(export_all).
+-compile(nowarn_export_all).
 
 -include_lib("grpcbox/include/grpcbox.hrl").
 
