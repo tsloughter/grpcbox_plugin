@@ -27,6 +27,28 @@ init(State) ->
     ]),
     {ok, rebar_state:add_provider(State, Provider)}.
 
+% TODO: this function is subject to be placed in rebar3. Isn't it?
+expand_env_vars(State, Input) ->
+  lists:foldl(
+    fun({Var, Value}, Input0) ->
+      rebar_utils:expand_env_variable(Input0, Var, Value)
+    end,
+    Input,
+    rebar_env:create_env(State)).
+
+out_dir(State) ->
+  Config     = rebar_state:opts(State),
+  GrpcConfig = rebar_opts:get(Config, grpc, []),
+  OutDir0    = proplists:get_value(out_dir, GrpcConfig, "src"),
+  OutDir     = expand_env_vars(State, OutDir0),
+
+  case ec_file:mkdir_p(OutDir) of
+    ok ->
+      OutDir;
+
+    {error, Reason} ->
+      throw(?PRV_ERROR({filelib, ensure_dir, Reason}))
+  end.
 
 -spec do(rebar_state:t()) -> {ok, rebar_state:t()} | {error, string()}.
 do(State) ->
@@ -35,7 +57,7 @@ do(State) ->
     {Options, _} = rebar_state:command_parsed_args(State),
     ProtosDir = proplists:get_value(protos, Options, proplists:get_value(protos, GrpcConfig, "priv/protos")),
     GpbOpts = proplists:get_value(gpb_opts, GrpcConfig, []),
-    GrpcOutDir = proplists:get_value(out_dir, GrpcConfig, "src"),
+    GrpcOutDir = out_dir(State),
 
     [begin
          GpbModule = compile_pb(Filename, GrpcOutDir, GpbOpts),
@@ -66,7 +88,7 @@ unmodified_maybe_rename(N) ->
     N.
 
 gen_service_behaviour(GpbModule, Options, GrpcConfig, State) ->
-    OutDir = proplists:get_value(out_dir, GrpcConfig, "src"),
+    OutDir = out_dir(State),
     Force = proplists:get_value(force, Options, true),
     ServicePrefix = proplists:get_value(prefix, GrpcConfig, ""),
     ServiceSuffix = proplists:get_value(suffix, GrpcConfig, ""),
