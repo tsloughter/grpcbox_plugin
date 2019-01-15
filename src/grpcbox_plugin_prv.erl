@@ -33,14 +33,20 @@ do(State) ->
     Config = rebar_state:opts(State),
     GrpcConfig = rebar_opts:get(Config, grpc, []),
     {Options, _} = rebar_state:command_parsed_args(State),
-    ProtosDir = proplists:get_value(protos, Options, proplists:get_value(protos, GrpcConfig, "priv/protos")),
+    ProtosDirs = case proplists:get_all_values(protos, Options) of
+                     [] ->
+                         proplists:get_value(protos, GrpcConfig, ["priv/protos"]);
+                     Ds ->
+                         Ds
+                 end,
     GpbOpts = proplists:get_value(gpb_opts, GrpcConfig, []),
     GrpcOutDir = proplists:get_value(out_dir, GrpcConfig, "src"),
 
-    [begin
-         GpbModule = compile_pb(Filename, GrpcOutDir, GpbOpts),
-         gen_service_behaviour(GpbModule, Options, GrpcConfig, State)
-     end || Filename <- filelib:wildcard(filename:join(ProtosDir, "*.proto"))],
+    [[begin
+          GpbModule = compile_pb(Filename, GrpcOutDir, GpbOpts),
+          gen_service_behaviour(GpbModule, Options, GrpcConfig, State)
+      end || Filename <- filelib:wildcard(filename:join(Dir, "*.proto"))]
+     || Dir <- ProtosDirs],
 
     {ok, State}.
 
