@@ -5,7 +5,7 @@
 
 %% this module was generated on {{datetime}} and should not be modified manually
 
--module({{service_name}}_client).
+-module({{module_name}}_client).
 
 -compile(export_all).
 -compile(nowarn_export_all).
@@ -23,12 +23,12 @@
 {{#methods}}
 %% @doc {{^input_stream}}{{^output_stream}}Unary RPC{{/output_stream}}{{/input_stream}}
 -spec {{method}}(ctx:t(){{^input_stream}}, {{pb_module}}:{{input}}(){{/input_stream}}) ->
-    {{^output_stream}}{{^input_stream}}{ok, {{pb_module}}:{{output}}(), grpcbox:metadata()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_stream:t()}{{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}{ok, grpcbox_stream:t()}{{/input_stream}}{{#input_stream}}{ok, grpclient:stream()}{{/input_stream}}{{/output_stream}} | grpcbox_stream:grpc_error_response().
+    {{^output_stream}}{{^input_stream}}{ok, {{pb_module}}:{{output}}(), grpcbox:metadata()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}} | grpcbox_stream:grpc_error_response().
 {{method}}(Ctx{{^input_stream}}, Input{{/input_stream}}) ->
     {{method}}(Ctx{{^input_stream}}, Input{{/input_stream}}, #{}).
 
 -spec {{method}}(ctx:t(){{^input_stream}}, {{pb_module}}:{{input}}(){{/input_stream}}, grpcbox_client:options()) ->
-    {{^output_stream}}{{^input_stream}}{ok, {{pb_module}}:{{output}}(), grpcbox:metadata()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_stream:t()}{{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}{ok, grpcbox_stream:t()}{{/input_stream}}{{#input_stream}}{ok, grpclient:stream()}{{/input_stream}}{{/output_stream}} | grpcbox_stream:grpc_error_response().
+    {{^output_stream}}{{^input_stream}}{ok, {{pb_module}}:{{output}}(), grpcbox:metadata()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}} | grpcbox_stream:grpc_error_response().
 {{method}}(Ctx{{^input_stream}}, Input{{/input_stream}}, Options) ->
     {{^output_stream}}{{^input_stream}}grpcbox_client:unary(Ctx, <<"/{{unmodified_service_name}}/{{unmodified_method}}">>, Input, ?DEF({{input}}, {{output}}), Options){{/input_stream}}{{#input_stream}}grpcbox_client:stream(Ctx, <<"/{{unmodified_service_name}}/{{unmodified_method}}">>, ?DEF({{input}}, {{output}}), Options){{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}grpcbox_client:stream(Ctx, <<"/{{unmodified_service_name}}/{{unmodified_method}}">>, Input, ?DEF({{input}}, {{output}}), Options){{/input_stream}}{{#input_stream}}grpcbox_client:stream(Ctx, <<"/{{unmodified_service_name}}/{{unmodified_method}}">>, ?DEF({{input}}, {{output}}), Options){{/input_stream}}{{/output_stream}}.
 

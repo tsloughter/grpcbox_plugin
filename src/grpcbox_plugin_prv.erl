@@ -20,8 +20,9 @@ init(State) ->
             {bare, true},                 % The task can be run by the user, always true
             {deps, ?DEPS},                % The list of dependencies
             {example, "rebar3 grpc gen"}, % How to use the plugin
-            {opts, [{protos, $p, "protos", string, ""},
-                    {force, $f, "force", boolean, ""}]},
+            {opts, [{protos, $p, "protos", string, "directory of protos to build"},
+                    {force, $f, "force", boolean, "overwrite already generated modules"},
+                    {type, $t, "type", string, "generate 'client' or 'all' (server behaviour and client)"}]},
             {short_desc, "Generates behaviours for grpc services"},
             {desc, "Generates behaviours for grpc services"}
     ]),
@@ -35,16 +36,28 @@ do(State) ->
     {Options, _} = rebar_state:command_parsed_args(State),
     ProtosDirs = case proplists:get_all_values(protos, Options) of
                      [] ->
-                         proplists:get_value(protos, GrpcConfig, ["priv/protos"]);
+                         case proplists:get_value(protos, GrpcConfig, ["priv/protos"]) of
+                             [H | _]=Ds when is_list(H) ->
+                                 Ds;
+                             D ->
+                                 [D]
+                         end;
                      Ds ->
                          Ds
                  end,
     GpbOpts = proplists:get_value(gpb_opts, GrpcConfig, []),
     GrpcOutDir = proplists:get_value(out_dir, GrpcConfig, "src"),
-
+    Type = case proplists:get_value(type, Options, undefined) of
+               undefined ->
+                   proplists:get_value(type, GrpcConfig, all);
+               T when T =:= "all" orelse T =:= "client" ->
+                   T
+           end,
+    TemplateName = to_template_name(Type),
+    ServiceModules = proplists:get_value(service_modules, GrpcConfig, []),
     [[begin
           GpbModule = compile_pb(Filename, GrpcOutDir, GpbOpts),
-          gen_service_behaviour(GpbModule, Options, GrpcConfig, State)
+          gen_service_behaviour(TemplateName, ServiceModules, GpbModule, Options, GrpcConfig, State)
       end || Filename <- filelib:wildcard(filename:join(Dir, "*.proto"))]
      || Dir <- ProtosDirs],
 
@@ -61,6 +74,15 @@ format_error({compile_errors, Errors, Warnings}) ->
 format_error(Reason) ->
     io_lib:format("~p", [Reason]).
 
+to_template_name(all) ->
+    "grpcbox";
+to_template_name(client) ->
+    "grpcbox_client";
+to_template_name("all") ->
+    "grpcbox";
+to_template_name("client") ->
+    "grpcbox_client".
+
 maybe_rename(name) ->
     method;
 maybe_rename(N) ->
@@ -71,24 +93,26 @@ unmodified_maybe_rename(name) ->
 unmodified_maybe_rename(N) ->
     N.
 
-gen_service_behaviour(GpbModule, Options, GrpcConfig, State) ->
+gen_service_behaviour(TemplateName, ServiceModules, GpbModule, Options, GrpcConfig, State) ->
     OutDir = proplists:get_value(out_dir, GrpcConfig, "src"),
     Force = proplists:get_value(force, Options, true),
     ServicePrefix = proplists:get_value(prefix, GrpcConfig, ""),
     ServiceSuffix = proplists:get_value(suffix, GrpcConfig, ""),
     Services = [begin
                     {{_, Name}, Methods} = GpbModule:get_service_def(S),
+                    ModuleName = proplists:get_value(Name, ServiceModules,
+                                                     list_snake_case(atom_to_list(Name))),
                     [{out_dir, OutDir},
                      {pb_module, atom_to_list(GpbModule)},
                      {unmodified_service_name, atom_to_list(Name)},
-                     {service_name, ServicePrefix++list_snake_case(atom_to_list(Name))++ServiceSuffix},
+                     {module_name, ServicePrefix++ModuleName++ServiceSuffix},
                      {methods, [lists:flatten([[{maybe_rename(X), maybe_snake_case(X, atom_to_list(Y))},
                                                    {unmodified_maybe_rename(X), atom_to_list(Y)}]
                                                || {X, Y} <- maps:to_list(Method), X =/= opts])
                                 || Method <- Methods]}]
                 end || S <- GpbModule:get_service_names()],
     rebar_log:log(debug, "services: ~p", [Services]),
-    [rebar_templater:new("grpcbox", Service, Force, State) || Service <- Services].
+    [rebar_templater:new(TemplateName, Service, Force, State) || Service <- Services].
 
 compile_pb(Filename, GrpcOutDir, Options) ->
     OutDir = proplists:get_value(o, Options, GrpcOutDir),

@@ -5,7 +5,7 @@
 
 %% this module was generated on {{datetime}} and should not be modified manually
 
--module({{service_name}}_bhvr).
+-module({{module_name}}_bhvr).
 
 {{#methods}}
 %% @doc {{^input_stream}}{{^output_stream}}Unary RPC{{/output_stream}}{{/input_stream}}
