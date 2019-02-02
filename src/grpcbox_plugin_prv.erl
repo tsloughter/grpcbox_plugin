@@ -106,9 +106,10 @@ gen_service_behaviour(TemplateName, ServiceModules, GpbModule, Options, GrpcConf
                      {pb_module, atom_to_list(GpbModule)},
                      {unmodified_service_name, atom_to_list(Name)},
                      {module_name, ServicePrefix++ModuleName++ServiceSuffix},
-                     {methods, [lists:flatten([[{maybe_rename(X), maybe_snake_case(X, atom_to_list(Y))},
+                     {methods, [lists:flatten([[[{maybe_rename(X), maybe_snake_case(X, atom_to_list(Y))},
                                                    {unmodified_maybe_rename(X), atom_to_list(Y)}]
-                                               || {X, Y} <- maps:to_list(Method), X =/= opts])
+                                               || {X, Y} <- maps:to_list(Method), X =/= opts],
+                                              {message_type, GpbModule:msg_name_to_fqbin(maps:get(input, Method))}])
                                 || Method <- Methods]}]
                 end || S <- GpbModule:get_service_names()],
     rebar_log:log(debug, "services: ~p", [Services]),
