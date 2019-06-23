@@ -31,36 +31,50 @@ init(State) ->
 
 -spec do(rebar_state:t()) -> {ok, rebar_state:t()} | {error, string()}.
 do(State) ->
-    Config = rebar_state:opts(State),
-    GrpcConfig = rebar_opts:get(Config, grpc, []),
-    {Options, _} = rebar_state:command_parsed_args(State),
-    ProtosDirs = case proplists:get_all_values(protos, Options) of
-                     [] ->
-                         case proplists:get_value(protos, GrpcConfig, ["priv/protos"]) of
-                             [H | _]=Ds when is_list(H) ->
-                                 Ds;
-                             D ->
-                                 [D]
-                         end;
-                     Ds ->
-                         Ds
-                 end,
-    GpbOpts = proplists:get_value(gpb_opts, GrpcConfig, []),
-    GrpcOutDir = proplists:get_value(out_dir, GrpcConfig, "src"),
-    Type = case proplists:get_value(type, Options, undefined) of
+    Apps = case rebar_state:current_app(State) of
                undefined ->
-                   proplists:get_value(type, GrpcConfig, all);
-               T when T =:= "all" orelse T =:= "client" ->
-                   T
+                   rebar_state:project_apps(State);
+               AppInfo ->
+                   [AppInfo]
            end,
-    TemplateName = to_template_name(Type),
-    ServiceModules = proplists:get_value(service_modules, GrpcConfig, []),
-    [[begin
-          GpbModule = compile_pb(Filename, GrpcOutDir, GpbOpts),
-          gen_service_behaviour(TemplateName, ServiceModules, GpbModule, Options, GrpcConfig, State)
-      end || Filename <- filelib:wildcard(filename:join(Dir, "*.proto"))]
-     || Dir <- ProtosDirs],
+    [begin
+         Config = rebar_app_info:opts(AppInfo),
+         BaseDir = rebar_app_info:dir(AppInfo),
+         DefaultOutDir = filename:join(BaseDir, "src"),
+         DefaultProtosDir = filename:join("priv", "protos"),
 
+         %% Config = rebar_state:opts(State),
+         GrpcConfig = rebar_opts:get(Config, grpc, []),
+         {Options, _} = rebar_state:command_parsed_args(State),
+         ProtosDirs = case proplists:get_all_values(protos, Options) of
+                          [] ->
+                              case proplists:get_value(protos, GrpcConfig, [DefaultProtosDir]) of
+                                  [H | _]=Ds when is_list(H) ->
+                                      Ds;
+                                  D ->
+                                      [D]
+                              end;
+                          Ds ->
+                              Ds
+                      end,
+         ProtosDirs1 = [filename:join(BaseDir, D) || D <- ProtosDirs],
+         GpbOpts = proplists:get_value(gpb_opts, GrpcConfig, []),
+         GrpcOutDir = proplists:get_value(out_dir, GrpcConfig, DefaultOutDir),
+         Type = case proplists:get_value(type, Options, undefined) of
+                    undefined ->
+                        proplists:get_value(type, GrpcConfig, all);
+                    T when T =:= "all" orelse T =:= "client" ->
+                        T
+                end,
+         TemplateName = to_template_name(Type),
+         ServiceModules = proplists:get_value(service_modules, GrpcConfig, []),
+         [[begin
+               GpbModule = compile_pb(Filename, GrpcOutDir, BaseDir, GpbOpts),
+               gen_service_behaviour(TemplateName, ServiceModules, GpbModule, GrpcOutDir, Options, GrpcConfig, State)
+           end || Filename <- filelib:wildcard(filename:join(Dir, "*.proto"))]
+          || Dir <- ProtosDirs1]
+
+     end || AppInfo <- Apps],
     {ok, State}.
 
 -spec format_error(any()) ->  iolist().
@@ -93,8 +107,7 @@ unmodified_maybe_rename(name) ->
 unmodified_maybe_rename(N) ->
     N.
 
-gen_service_behaviour(TemplateName, ServiceModules, GpbModule, Options, GrpcConfig, State) ->
-    OutDir = proplists:get_value(out_dir, GrpcConfig, "src"),
+gen_service_behaviour(TemplateName, ServiceModules, GpbModule, OutDir, Options, GrpcConfig, State) ->
     Force = proplists:get_value(force, Options, true),
     ServicePrefix = proplists:get_value(prefix, GrpcConfig, ""),
     ServiceSuffix = proplists:get_value(suffix, GrpcConfig, ""),
@@ -115,8 +128,8 @@ gen_service_behaviour(TemplateName, ServiceModules, GpbModule, Options, GrpcConf
     rebar_log:log(debug, "services: ~p", [Services]),
     [rebar_templater:new(TemplateName, Service, Force, State) || Service <- Services].
 
-compile_pb(Filename, GrpcOutDir, Options) ->
-    OutDir = proplists:get_value(o, Options, GrpcOutDir),
+compile_pb(Filename, GrpcOutDir, BaseDir, Options) ->
+    OutDir = filename:join(BaseDir, proplists:get_value(o, Options, GrpcOutDir)),
     ModuleNameSuffix = proplists:get_value(module_name_suffix, Options, ""),
     ModuleNamePrefix = proplists:get_value(module_name_prefix, Options, ""),
     CompiledPB =  filename:join(OutDir, ModuleNamePrefix++filename:basename(Filename, ".proto") ++ ModuleNameSuffix++".erl"),
