@@ -70,7 +70,7 @@ do(State) ->
          ServiceModules = proplists:get_value(service_modules, GrpcConfig, []),
          [[begin
                GpbModule = compile_pb(Filename, GrpcOutDir, BaseDir, GpbOpts),
-               gen_service_behaviour(TemplateName, ServiceModules, GpbModule, GrpcOutDir, Options, GrpcConfig, State)
+               gen_service_behaviour(TemplateName, ServiceModules, GpbModule, GrpcOutDir, BaseDir, Options, GrpcConfig, State)
            end || Filename <- filelib:wildcard(filename:join(Dir, "*.proto"))]
           || Dir <- ProtosDirs1]
 
@@ -107,7 +107,7 @@ unmodified_maybe_rename(name) ->
 unmodified_maybe_rename(N) ->
     N.
 
-gen_service_behaviour(TemplateName, ServiceModules, GpbModule, OutDir, Options, GrpcConfig, State) ->
+gen_service_behaviour(TemplateName, ServiceModules, GpbModule, OutDir, BaseDir, Options, GrpcConfig, State) ->
     Force = proplists:get_value(force, Options, true),
     ServicePrefix = proplists:get_value(prefix, GrpcConfig, ""),
     ServiceSuffix = proplists:get_value(suffix, GrpcConfig, ""),
@@ -115,7 +115,7 @@ gen_service_behaviour(TemplateName, ServiceModules, GpbModule, OutDir, Options, 
                     {{_, Name}, Methods} = GpbModule:get_service_def(S),
                     ModuleName = proplists:get_value(Name, ServiceModules,
                                                      list_snake_case(atom_to_list(Name))),
-                    [{out_dir, OutDir},
+                    [{out_dir, filename:join(BaseDir, OutDir)},
                      {pb_module, atom_to_list(GpbModule)},
                      {unmodified_service_name, atom_to_list(Name)},
                      {module_name, ServicePrefix++ModuleName++ServiceSuffix},
