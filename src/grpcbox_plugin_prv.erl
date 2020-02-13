@@ -13,19 +13,18 @@
 %% ===================================================================
 -spec init(rebar_state:t()) -> {ok, rebar_state:t()}.
 init(State) ->
-    Provider = providers:create([
-            {name, ?PROVIDER},            % The 'user friendly' name of the task
-            {namespace, ?NAMESPACE},
-            {module, ?MODULE},            % The module implementation of the task
-            {bare, true},                 % The task can be run by the user, always true
-            {deps, ?DEPS},                % The list of dependencies
-            {example, "rebar3 grpc gen"}, % How to use the plugin
-            {opts, [{protos, $p, "protos", string, "directory of protos to build"},
-                    {force, $f, "force", boolean, "overwrite already generated modules"},
-                    {type, $t, "type", string, "generate 'client' or 'all' (server behaviour and client)"}]},
-            {short_desc, "Generates behaviours for grpc services"},
-            {desc, "Generates behaviours for grpc services"}
-    ]),
+    Provider = providers:create(
+                 [{name, ?PROVIDER},            % The 'user friendly' name of the task
+                  {namespace, ?NAMESPACE},
+                  {module, ?MODULE},            % The module implementation of the task
+                  {bare, true},                 % The task can be run by the user, always true
+                  {deps, ?DEPS},                % The list of dependencies
+                  {example, "rebar3 grpc gen"}, % How to use the plugin
+                  {opts, [{protos, $p, "protos", string, "directory of protos to build"},
+                          {force, $f, "force", boolean, "overwrite already generated modules"},
+                          {type, $t, "type", string, "generate 'client' or 'all' (server behaviour and client)"}]},
+                  {short_desc, "Generates behaviours for grpc services"},
+                  {desc, "Generates behaviours for grpc services"}]),
     {ok, rebar_state:add_provider(State, Provider)}.
 
 
@@ -37,144 +36,162 @@ do(State) ->
                AppInfo ->
                    [AppInfo]
            end,
-    [begin
-         Config = rebar_app_info:opts(AppInfo),
-         BaseDir = rebar_app_info:dir(AppInfo),
-         DefaultOutDir = filename:join(BaseDir, "src"),
-         DefaultProtosDir = filename:join("priv", "protos"),
-
-         %% Config = rebar_state:opts(State),
-         GrpcConfig = rebar_opts:get(Config, grpc, []),
-         {Options, _} = rebar_state:command_parsed_args(State),
-         ProtosDirs = case proplists:get_all_values(protos, Options) of
-                          [] ->
-                              case proplists:get_value(protos, GrpcConfig, [DefaultProtosDir]) of
-                                  [H | _]=Ds when is_list(H) ->
-                                      Ds;
-                                  D ->
-                                      [D]
-                              end;
-                          Ds ->
-                              Ds
-                      end,
-         ProtosDirs1 = [filename:join(BaseDir, D) || D <- ProtosDirs],
-         GpbOpts = proplists:get_value(gpb_opts, GrpcConfig, []),
-         GrpcOutDir = proplists:get_value(out_dir, GrpcConfig, DefaultOutDir),
-         Type = case proplists:get_value(type, Options, undefined) of
-                    undefined ->
-                        proplists:get_value(type, GrpcConfig, all);
-                    T when T =:= "all" orelse T =:= "client" ->
-                        T
-                end,
-         TemplateName = to_template_name(Type),
-         ServiceModules = proplists:get_value(service_modules, GrpcConfig, []),
-         [[begin
-               GpbModule = compile_pb(Filename, GrpcOutDir, BaseDir, GpbOpts),
-               gen_service_behaviour(TemplateName, ServiceModules, GpbModule, GrpcOutDir, BaseDir, Options, GrpcConfig, State)
-           end || Filename <- filelib:wildcard(filename:join(Dir, "*.proto"))]
-          || Dir <- ProtosDirs1]
-
-     end || AppInfo <- Apps],
+    {Options, _} = rebar_state:command_parsed_args(State),
+    lists:foreach(fun(AppInfo) -> handle_app(AppInfo, Options, State) end, Apps),
     {ok, State}.
 
 -spec format_error(any()) ->  iolist().
-format_error({compile_errors, Errors, Warnings}) ->
-    [begin
-         rebar_api:warn("Warning building ~s~n", [File]),
-         [rebar_api:warn("        ~p: ~s", [Line, M:format_error(E)]) || {Line, M, E} <- Es]
-     end || {File, Es} <- Warnings],
+format_error({compile_errors, Errors}) ->
     [[io_lib:format("Error building ~s~n", [File]) |
-         [io_lib:format("        ~p: ~s", [Line, M:format_error(E)]) || {Line, M, E} <- Es]] || {File, Es} <- Errors];
+      [io_lib:format("        ~p: ~s", [Line, M:format_error(E)])
+       || {Line, M, E} <- Es]]
+     || {File, Es} <- Errors];
 format_error(Reason) ->
     io_lib:format("~p", [Reason]).
 
-to_template_name(all) ->
-    "grpcbox";
-to_template_name(client) ->
-    "grpcbox_client";
-to_template_name("all") ->
-    "grpcbox";
-to_template_name("client") ->
-    "grpcbox_client".
+handle_app(AppInfo, Options, State) ->
+    Opts = rebar_app_info:opts(AppInfo),
+    GrpcOpts = rebar_opts:get(Opts, grpc, []),
+    GpbOpts = proplists:get_value(gpb_opts, GrpcOpts, []),
+    BaseDir = rebar_app_info:dir(AppInfo),
+    GrpcOptOutDir = proplists:get_value(out_dir, GrpcOpts, filename:join(BaseDir, "src")),
+    GrpcOutDir = filename:join(BaseDir, GrpcOptOutDir),
+    GpbOutDir = filename:join(BaseDir, proplists:get_value(o, GpbOpts, GrpcOptOutDir)),
 
-maybe_rename(name) ->
-    method;
-maybe_rename(N) ->
-    N.
+    ProtosDirs = case proplists:get_all_values(protos, Options) of
+                     [] ->
+                         case proplists:get_value(protos, GrpcOpts, [filename:join("priv", "protos")]) of
+                             [H | _] = Ds when is_list(H) ->
+                                 Ds;
+                             D ->
+                                 [D]
+                         end;
+                     Ds ->
+                         Ds
+                 end,
+    ProtoFiles = lists:append([filelib:wildcard(filename:join([BaseDir, D, "*.proto"])) || D <- ProtosDirs]),
 
-unmodified_maybe_rename(name) ->
-    unmodified_method;
-unmodified_maybe_rename(N) ->
-    N.
+    Type = case proplists:get_value(type, Options, undefined) of
+               undefined ->
+                   proplists:get_value(type, GrpcOpts, all);
+               T when T =:= "all" orelse T =:= "client" ->
+                   T
+           end,
+    Templates = templates(Type),
+    ProtoModules = [compile_pb(Filename, GpbOutDir, GpbOpts) || Filename <- ProtoFiles],
+    [gen_services(Templates, ProtoModule, ProtoBeam, GrpcOutDir, GrpcOpts, State)
+     || {ProtoModule, ProtoBeam} <- ProtoModules],
+    ok.
 
-gen_service_behaviour(TemplateName, ServiceModules, GpbModule, OutDir, BaseDir, Options, GrpcConfig, State) ->
-    Force = proplists:get_value(force, Options, true),
+compile_pb(Filename, OutDir, GpbOpts) ->
+    ModuleName = lists:flatten(
+                   [proplists:get_value(module_name_prefix, GpbOpts, ""),
+                    filename:basename(Filename, ".proto"),
+                    proplists:get_value(module_name_suffix, GpbOpts, "")]),
+    GeneratedPB = filename:join(OutDir, ModuleName ++ ".erl"),
+    CompiledPB = filename:join(OutDir, ModuleName ++ ".beam"),
+    case needs_update(Filename, GeneratedPB) of
+        true ->
+            rebar_log:log(info, "Writing ~s", [GeneratedPB]),
+            ok = gpb_compile:file(Filename, [{rename,{msg_name,snake_case}},
+                                             {rename,{msg_fqname,base_name}},
+                                             use_packages, maps,
+                                             strings_as_binaries, {i, "."},
+                                             {o, OutDir} | GpbOpts]);
+        false ->
+            ok
+    end,
+    case needs_update(GeneratedPB, CompiledPB) of
+        true ->
+            GpbIncludeDir = filename:join(code:lib_dir(gpb), "include"),
+            case compile:file(GeneratedPB, [{outdir, OutDir}, {i, GpbIncludeDir}, return_errors]) of
+                {ok, _} ->
+                    ok;
+                {ok, _, Warnings} ->
+                    log_warnings(Warnings),
+                    ok;
+                {error, Errors, Warnings} ->
+                    log_warnings(Warnings),
+                    throw(?PRV_ERROR({compile_errors, Errors}))
+            end;
+        false ->
+            ok
+    end,
+    {module, Module} = code:load_abs(filename:join(OutDir, ModuleName)),
+    {Module, CompiledPB}.
+
+gen_services(Templates, ProtoModule, ProtoBeam, OutDir, GrpcConfig, State) ->
+    ServiceDefs = [gen_service_def(S, ProtoModule, GrpcConfig, OutDir)
+                   || S <- ProtoModule:get_service_names()],
+    WithTemplates = [{S, TemplateSuffix, TemplateName}
+                     || S <- ServiceDefs, {TemplateSuffix, TemplateName} <- Templates],
+    Services = lists:filter(fun(S) -> filter_outdated(S, OutDir, ProtoBeam) end, WithTemplates),
+    rebar_log:log(debug, "services: ~p", [Services]),
+    [rebar_templater:new(TemplateName, maps:to_list(Service), true, State)
+     || {Service, _, TemplateName} <- Services].
+
+gen_service_def(Service, ProtoModule, GrpcConfig, FullOutDir) ->
+    ServiceModules = proplists:get_value(service_modules, GrpcConfig, []),
     ServicePrefix = proplists:get_value(prefix, GrpcConfig, ""),
     ServiceSuffix = proplists:get_value(suffix, GrpcConfig, ""),
-    Services = [begin
-                    {{_, Name}, Methods} = GpbModule:get_service_def(S),
-                    ModuleName = proplists:get_value(Name, ServiceModules,
-                                                     list_snake_case(atom_to_list(Name))),
-                    [{out_dir, filename:join(BaseDir, OutDir)},
-                     {pb_module, atom_to_list(GpbModule)},
-                     {unmodified_service_name, atom_to_list(Name)},
-                     {module_name, ServicePrefix++ModuleName++ServiceSuffix},
-                     {methods, [lists:flatten([[[{maybe_rename(X), maybe_snake_case(X, atom_to_list(Y))},
-                                                   {unmodified_maybe_rename(X), atom_to_list(Y)}]
-                                               || {X, Y} <- maps:to_list(Method), X =/= opts],
-                                              {message_type, GpbModule:msg_name_to_fqbin(maps:get(input, Method))}])
-                                || Method <- Methods]}]
-                end || S <- GpbModule:get_service_names()],
-    rebar_log:log(debug, "services: ~p", [Services]),
-    [rebar_templater:new(TemplateName, Service, Force, State) || Service <- Services].
+    {{_, Name}, Methods} = ProtoModule:get_service_def(Service),
+    ModuleName = proplists:get_value(Name, ServiceModules, list_snake_case(atom_to_list(Name))),
+    #{out_dir => FullOutDir,
+      pb_module => atom_to_list(ProtoModule),
+      unmodified_service_name => atom_to_list(Name),
+      module_name => ServicePrefix ++ ModuleName ++ ServiceSuffix,
+      methods => [resolve_method(M, ProtoModule) || M <- Methods]}.
 
-compile_pb(Filename, GrpcOutDir, BaseDir, Options) ->
-    OutDir = filename:join(BaseDir, proplists:get_value(o, Options, GrpcOutDir)),
-    ModuleNameSuffix = proplists:get_value(module_name_suffix, Options, ""),
-    ModuleNamePrefix = proplists:get_value(module_name_prefix, Options, ""),
-    CompiledPB =  filename:join(OutDir, ModuleNamePrefix++filename:basename(Filename, ".proto") ++ ModuleNameSuffix++".erl"),
-    rebar_log:log(info, "Writing ~s", [CompiledPB]),
-    ok = gpb_compile:file(Filename, [{rename,{msg_name,snake_case}},
-                                     {rename,{msg_fqname,base_name}},
-                                     use_packages, maps,
-                                     strings_as_binaries, {i, "."}, {o, OutDir} | Options]),
-    GpbInludeDir = filename:join(code:lib_dir(gpb), "include"),
-    case compile:file(CompiledPB,
-                      [binary, {i, GpbInludeDir}, return_errors]) of
-        {ok, Module, Compiled} ->
-            {module, _} = code:load_binary(Module, CompiledPB, Compiled),
-            Module;
-        {ok, Module, Compiled, Warnings} ->
-            [begin
-                 rebar_api:warn("Warning building ~s~n", [File]),
-                 [rebar_api:warn("        ~p: ~s", [Line, M:format_error(E)]) || {Line, M, E} <- Es]
-             end || {File, Es} <- Warnings],
-            {module, _} = code:load_binary(Module, CompiledPB, Compiled),
-            Module;
-        {error, Errors, Warnings} ->
-            throw(?PRV_ERROR({compile_errors, Errors, Warnings}))
-    end.
+resolve_method(Method, ProtoModule) ->
+    MessageType = {message_type, ProtoModule:msg_name_to_fqbin(maps:get(input, Method))},
+    MethodData = lists:flatmap(fun normalize_method_opt/1, maps:to_list(Method)),
+    [MessageType | MethodData].
 
-maybe_snake_case(name, Name) ->
-    list_snake_case(Name);
-maybe_snake_case(_, "true") ->
-    true;
-maybe_snake_case(_, "false") ->
-    false;
-maybe_snake_case(_, Value) ->
-    Value.
+filter_outdated({#{module_name := ModuleName}, TemplateSuffix, _}, OutDir, ProtoBeam) ->
+    ModulePath = filename:join([OutDir, ModuleName ++ "_" ++ TemplateSuffix ++ ".erl"]),
+    needs_update(ProtoBeam, ModulePath).
+
+templates(S) when is_list(S) ->
+    templates(list_to_existing_atom(S));
+templates(all) ->
+    [{"client", "grpcbox_service_client"},
+     {"bhvr", "grpcbox_service_bhvr"}];
+templates(client) ->
+    [{"client", "grpcbox_service_client"}].
+
+normalize_method_opt({opts, _}) ->
+    [];
+normalize_method_opt({name, Name}) ->
+    StrName = atom_to_list(Name),
+    [{method, list_snake_case(StrName)},
+     {unmodified_method, StrName}];
+normalize_method_opt({K, V}) when V =:= true; V =:= false ->
+    [{K, V}];
+normalize_method_opt({K, V}) ->
+    [{K, atom_to_list(V)}].
 
 list_snake_case(NameString) ->
-    Snaked = lists:foldl(fun(RE, Snaking) ->
-                                 re:replace(Snaking, RE, "\\1_\\2", [{return, list},
-                                                                     global])
-                         end, NameString, [%% uppercase followed by lowercase
-                                           "(.)([A-Z][a-z]+)",
-                                           %% any consecutive digits
-                                           "(.)([0-9]+)",
-                                           %% uppercase with lowercase
-                                           %% or digit before it
-                                           "([a-z0-9])([A-Z])"]),
+    Snaked = lists:foldl(
+               fun(RE, Snaking) ->
+                       re:replace(Snaking, RE, "\\1_\\2", [{return, list}, global])
+               end,
+               NameString,
+               [%% uppercase followed by lowercase
+                "(.)([A-Z][a-z]+)",
+                %% any consecutive digits
+                "(.)([0-9]+)",
+                %% uppercase with lowercase
+                %% or digit before it
+                "([a-z0-9])([A-Z])"]),
     Snaked1 = string:replace(Snaked, ".", "_", all),
     Snaked2 = string:replace(Snaked1, "__", "_", all),
     string:to_lower(unicode:characters_to_list(Snaked2)).
+
+needs_update(Source, Artifact) ->
+    filelib:last_modified(Source) > filelib:last_modified(Artifact).
+
+log_warnings(Warnings) ->
+    [begin
+         rebar_api:warn("Warning building ~s~n", [File]),
+         [rebar_api:warn("        ~p: ~s", [Line, M:format_error(E)]) || {Line, M, E} <- Es]
+     end || {File, Es} <- Warnings].

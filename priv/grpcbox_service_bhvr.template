@@ -1,8 +1,7 @@
-{description, "Grpc server services template"}.
+{description, "Grpc service server behaviour template"}.
 {variables,
  [{unmodified_service_name, [], "Original name of the service, as it'll appear in a request"},
   {pb_module, "", "Name of protobuf module to get type specs from"},
   {module_name, [], "Name of the module for the service"},
   {methods, [], "List of methods for service"}]}.
-{template, "grpcbox_service.erl", "{{out_dir}}/{{module_name}}_bhvr.erl"}.
-{template, "grpcbox_service_client.erl", "{{out_dir}}/{{module_name}}_client.erl"}.
+{template, "grpcbox_service_bhvr.erl", "{{out_dir}}/{{module_name}}_bhvr.erl"}.

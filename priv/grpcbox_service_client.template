@@ -1,4 +1,4 @@
-{description, "Grpc client service template"}.
+{description, "Grpc service client template"}.
 {variables,
  [{unmodified_service_name, [], "Original name of the service, as it'll appear in a request"},
   {pb_module, "", "Name of protobuf module to get type specs from"},
