@@ -26,19 +26,19 @@
 {{#methods}}
 %% @doc {{^input_stream}}{{^output_stream}}Unary RPC{{/output_stream}}{{/input_stream}}
 -spec {{method}}({{^input_stream}}{{pb_module}}:{{input}}(){{/input_stream}}) ->
-    {{^output_stream}}{{^input_stream}}{ok, {{pb_module}}:{{output}}(), grpcbox:metadata()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}} | grpcbox_stream:grpc_error_response().
+    {{^output_stream}}{{^input_stream}}{ok, {{pb_module}}:{{output}}(), grpcbox:metadata()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}} | grpcbox_stream:grpc_error_response() | {error, any()}.
 {{method}}({{^input_stream}}Input{{/input_stream}}) ->
     {{method}}(ctx:new(){{^input_stream}}, Input{{/input_stream}}, #{}).
 
 -spec {{method}}(ctx:t(){{^input_stream}} | {{pb_module}}:{{input}}(){{/input_stream}}{{^input_stream}}, {{pb_module}}:{{input}}(){{/input_stream}} | grpcbox_client:options()) ->
-    {{^output_stream}}{{^input_stream}}{ok, {{pb_module}}:{{output}}(), grpcbox:metadata()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}} | grpcbox_stream:grpc_error_response().
+    {{^output_stream}}{{^input_stream}}{ok, {{pb_module}}:{{output}}(), grpcbox:metadata()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}} | grpcbox_stream:grpc_error_response() | {error, any()}.
 {{method}}(Ctx{{^input_stream}}, Input{{/input_stream}}) when ?is_ctx(Ctx) ->
     {{method}}(Ctx{{^input_stream}}, Input{{/input_stream}}, #{});
 {{method}}({{^input_stream}}Input, {{/input_stream}}Options) ->
     {{method}}(ctx:new(){{^input_stream}}, Input{{/input_stream}}, Options).
 
 -spec {{method}}(ctx:t(){{^input_stream}}, {{pb_module}}:{{input}}(){{/input_stream}}, grpcbox_client:options()) ->
-    {{^output_stream}}{{^input_stream}}{ok, {{pb_module}}:{{output}}(), grpcbox:metadata()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}} | grpcbox_stream:grpc_error_response().
+    {{^output_stream}}{{^input_stream}}{ok, {{pb_module}}:{{output}}(), grpcbox:metadata()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}} | grpcbox_stream:grpc_error_response() | {error, any()}.
 {{method}}(Ctx{{^input_stream}}, Input{{/input_stream}}, Options) ->
     {{^output_stream}}{{^input_stream}}grpcbox_client:unary(Ctx, <<"/{{unmodified_service_name}}/{{unmodified_method}}">>, Input, ?DEF({{input}}, {{output}}, <<"{{message_type}}">>), Options){{/input_stream}}{{#input_stream}}grpcbox_client:stream(Ctx, <<"/{{unmodified_service_name}}/{{unmodified_method}}">>, ?DEF({{input}}, {{output}}, <<"{{message_type}}">>), Options){{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}grpcbox_client:stream(Ctx, <<"/{{unmodified_service_name}}/{{unmodified_method}}">>, Input, ?DEF({{input}}, {{output}}, <<"{{message_type}}">>), Options){{/input_stream}}{{#input_stream}}grpcbox_client:stream(Ctx, <<"/{{unmodified_service_name}}/{{unmodified_method}}">>, ?DEF({{input}}, {{output}}, <<"{{message_type}}">>), Options){{/input_stream}}{{/output_stream}}.
 
