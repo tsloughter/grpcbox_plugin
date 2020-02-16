@@ -22,7 +22,7 @@ init(State) ->
                   {example, "rebar3 grpc gen"}, % How to use the plugin
                   {opts, [{protos, $p, "protos", string, "directory of protos to build"},
                           {force, $f, "force", boolean, "overwrite already generated modules"},
-                          {type, $t, "type", string, "generate 'client' or 'all' (server behaviour and client)"}]},
+                          {type, $t, "type", string, "generate 'client', 'server' or 'all'"}]},
                   {short_desc, "Generates behaviours for grpc services"},
                   {desc, "Generates behaviours for grpc services"}]),
     {ok, rebar_state:add_provider(State, Provider)}.
@@ -157,7 +157,9 @@ templates(all) ->
     [{"client", "grpcbox_service_client"},
      {"bhvr", "grpcbox_service_bhvr"}];
 templates(client) ->
-    [{"client", "grpcbox_service_client"}].
+    [{"client", "grpcbox_service_client"}];
+templates(server) ->
+    [{"bhvr", "grpcbox_service_bhvr"}].
 
 normalize_method_opt({opts, _}) ->
     [];
