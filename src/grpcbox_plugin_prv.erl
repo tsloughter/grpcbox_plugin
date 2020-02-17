@@ -90,6 +90,7 @@ compile_pb(Filename, OutDir, GpbOpts) ->
                     proplists:get_value(module_name_suffix, GpbOpts, "")]),
     GeneratedPB = filename:join(OutDir, ModuleName ++ ".erl"),
     CompiledPB = filename:join(OutDir, ModuleName ++ ".beam"),
+    ok = filelib:ensure_dir(GeneratedPB),
     case needs_update(Filename, GeneratedPB) of
         true ->
             rebar_log:log(info, "Writing ~s", [GeneratedPB]),
@@ -149,6 +150,7 @@ resolve_method(Method, ProtoModule) ->
 
 filter_outdated({#{module_name := ModuleName}, TemplateSuffix, _}, OutDir, ProtoBeam) ->
     ModulePath = filename:join([OutDir, ModuleName ++ "_" ++ TemplateSuffix ++ ".erl"]),
+    ok = filelib:ensure_dir(ModulePath),
     needs_update(ProtoBeam, ModulePath).
 
 templates(S) when is_list(S) ->
