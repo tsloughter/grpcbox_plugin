@@ -85,6 +85,9 @@ format_error({compile_errors, Errors, Warnings}) ->
      end || {File, Es} <- Warnings],
     [[io_lib:format("Error building ~s~n", [File]) |
          [io_lib:format("        ~p: ~s", [Line, M:format_error(E)]) || {Line, M, E} <- Es]] || {File, Es} <- Errors];
+format_error({gpb, File, Error}) ->
+    io_lib:format("Error compiling proto file ~s ~s", [filename:basename(File),
+                                                       gpb_compile:format_error(Error)]);
 format_error(Reason) ->
     io_lib:format("~p", [Reason]).
 
@@ -115,18 +118,20 @@ gen_service_behaviour(TemplateName, ServiceModules, GpbModule, OutDir, Options, 
                     {{_, Name}, Methods} = GpbModule:get_service_def(S),
                     ModuleName = proplists:get_value(Name, ServiceModules,
                                                      list_snake_case(atom_to_list(Name))),
-                    [{out_dir, OutDir},
-                     {pb_module, atom_to_list(GpbModule)},
-                     {unmodified_service_name, atom_to_list(Name)},
-                     {module_name, ServicePrefix++ModuleName++ServiceSuffix},
+                    [
+
+                         {out_dir, OutDir},
+                         {pb_module, atom_to_list(GpbModule)},
+                         {unmodified_service_name, atom_to_list(Name)},
+                         {module_name, ServicePrefix++ModuleName++ServiceSuffix},
                      {methods, [lists:flatten([[[{maybe_rename(X), maybe_snake_case(X, atom_to_list(Y))},
-                                                   {unmodified_maybe_rename(X), atom_to_list(Y)}]
-                                               || {X, Y} <- maps:to_list(Method), X =/= opts],
-                                              {message_type, GpbModule:msg_name_to_fqbin(maps:get(input, Method))}])
-                                || Method <- Methods]}]
-                end || S <- GpbModule:get_service_names()],
-    rebar_log:log(debug, "services: ~p", [Services]),
-    [rebar_templater:new(TemplateName, Service, Force, State) || Service <- Services].
+                                                     {unmodified_maybe_rename(X), atom_to_list(Y)}]
+                                                    || {X, Y} <- maps:to_list(Method), X =/= opts],
+                                                   {message_type, GpbModule:msg_name_to_fqbin(maps:get(input, Method))}])
+                                 || Method <- Methods]}]
+                     end || S <- GpbModule:get_service_names()],
+                    rebar_log:log(debug, "services: ~p", [Services]),
+                    [rebar_templater:new(TemplateName, Service, Force, State) || Service <- Services].
 
 compile_pb(Filename, GrpcOutDir, BaseDir, Options) ->
     OutDir = filename:join(BaseDir, proplists:get_value(o, Options, GrpcOutDir)),
@@ -134,25 +139,30 @@ compile_pb(Filename, GrpcOutDir, BaseDir, Options) ->
     ModuleNamePrefix = proplists:get_value(module_name_prefix, Options, ""),
     CompiledPB =  filename:join(OutDir, ModuleNamePrefix++filename:basename(Filename, ".proto") ++ ModuleNameSuffix++".erl"),
     rebar_log:log(info, "Writing ~s", [CompiledPB]),
-    ok = gpb_compile:file(Filename, [{rename,{msg_name,snake_case}},
+    case gpb_compile:file(Filename, [{rename,{msg_name,snake_case}},
                                      {rename,{msg_fqname,base_name}},
                                      use_packages, maps,
-                                     strings_as_binaries, {i, "."}, {o, OutDir} | Options]),
-    GpbInludeDir = filename:join(code:lib_dir(gpb), "include"),
-    case compile:file(CompiledPB,
-                      [binary, {i, GpbInludeDir}, return_errors]) of
-        {ok, Module, Compiled} ->
-            {module, _} = code:load_binary(Module, CompiledPB, Compiled),
-            Module;
-        {ok, Module, Compiled, Warnings} ->
-            [begin
-                 rebar_api:warn("Warning building ~s~n", [File]),
-                 [rebar_api:warn("        ~p: ~s", [Line, M:format_error(E)]) || {Line, M, E} <- Es]
-             end || {File, Es} <- Warnings],
-            {module, _} = code:load_binary(Module, CompiledPB, Compiled),
-            Module;
-        {error, Errors, Warnings} ->
-            throw(?PRV_ERROR({compile_errors, Errors, Warnings}))
+                                     {report_errors, false},
+                                     strings_as_binaries, {i, "."}, {o, OutDir} | Options]) of
+        ok ->
+            GpbInludeDir = filename:join(code:lib_dir(gpb), "include"),
+            case compile:file(CompiledPB,
+                              [binary, {i, GpbInludeDir}, return_errors]) of
+                {ok, Module, Compiled} ->
+                    {module, _} = code:load_binary(Module, CompiledPB, Compiled),
+                    Module;
+                {ok, Module, Compiled, Warnings} ->
+                    [begin
+                         rebar_api:warn("Warning building ~s~n", [File]),
+                         [rebar_api:warn("        ~p: ~s", [Line, M:format_error(E)]) || {Line, M, E} <- Es]
+                     end || {File, Es} <- Warnings],
+                    {module, _} = code:load_binary(Module, CompiledPB, Compiled),
+                    Module;
+                {error, Errors, Warnings} ->
+                    erlang:error(?PRV_ERROR({compile_errors, Errors, Warnings}))
+            end;
+        {error, Error} ->
+            erlang:error(?PRV_ERROR({gpb, Filename, Error}))
     end.
 
 maybe_snake_case(name, Name) ->
