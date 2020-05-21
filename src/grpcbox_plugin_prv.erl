@@ -46,11 +46,15 @@ format_error({compile_errors, Errors}) ->
       [io_lib:format("        ~p: ~s", [Line, M:format_error(E)])
        || {Line, M, E} <- Es]]
      || {File, Es} <- Errors];
+format_error({gpb, File, Error}) ->
+    io_lib:format("Error compiling proto file ~s ~s", [filename:basename(File),
+                                                       gpb_compile:format_error(Error)]);
 format_error(Reason) ->
     io_lib:format("~p", [Reason]).
 
 handle_app(AppInfo, Options, State) ->
     Opts = rebar_app_info:opts(AppInfo),
+    BeamOutDir = rebar_app_info:ebin_dir(AppInfo),
     GrpcOpts = rebar_opts:get(Opts, grpc, []),
     GpbOpts = proplists:get_value(gpb_opts, GrpcOpts, []),
     BaseDir = rebar_app_info:dir(AppInfo),
@@ -78,12 +82,12 @@ handle_app(AppInfo, Options, State) ->
                    T
            end,
     Templates = templates(Type),
-    ProtoModules = [compile_pb(Filename, GpbOutDir, GpbOpts) || Filename <- ProtoFiles],
+    ProtoModules = [compile_pb(Filename, GpbOutDir, BeamOutDir, GpbOpts) || Filename <- ProtoFiles],
     [gen_services(Templates, ProtoModule, ProtoBeam, GrpcOutDir, GrpcOpts, State)
      || {ProtoModule, ProtoBeam} <- ProtoModules],
     ok.
 
-compile_pb(Filename, OutDir, GpbOpts) ->
+compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
     ModuleName = lists:flatten(
                    [proplists:get_value(module_name_prefix, GpbOpts, ""),
                     filename:basename(Filename, ".proto"),
@@ -94,18 +98,24 @@ compile_pb(Filename, OutDir, GpbOpts) ->
     case needs_update(Filename, GeneratedPB) of
         true ->
             rebar_log:log(info, "Writing ~s", [GeneratedPB]),
-            ok = gpb_compile:file(Filename, [{rename,{msg_name,snake_case}},
+            case gpb_compile:file(Filename, [{rename,{msg_name,snake_case}},
                                              {rename,{msg_fqname,base_name}},
                                              use_packages, maps,
                                              strings_as_binaries, {i, "."},
-                                             {o, OutDir} | GpbOpts]);
+                                             {report_errors, false},
+                                             {o, OutDir} | GpbOpts]) of
+                ok ->
+                    ok;
+                {error, Error} ->
+                    erlang:error(?PRV_ERROR({gpb, Filename, Error}))
+            end;
         false ->
             ok
     end,
     case needs_update(GeneratedPB, CompiledPB) of
         true ->
             GpbIncludeDir = filename:join(code:lib_dir(gpb), "include"),
-            case compile:file(GeneratedPB, [{outdir, OutDir}, {i, GpbIncludeDir}, return_errors]) of
+            case compile:file(GeneratedPB, [{outdir, BeamOutDir}, {i, GpbIncludeDir}, return_errors]) of
                 {ok, _} ->
                     ok;
                 {ok, _, Warnings} ->
@@ -118,7 +128,7 @@ compile_pb(Filename, OutDir, GpbOpts) ->
         false ->
             ok
     end,
-    {module, Module} = code:load_abs(filename:join(OutDir, ModuleName)),
+    {module, Module} = code:load_abs(filename:join(BeamOutDir, ModuleName)),
     {Module, CompiledPB}.
 
 gen_services(Templates, ProtoModule, ProtoBeam, OutDir, GrpcConfig, State) ->
