@@ -93,7 +93,7 @@ compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
                     filename:basename(Filename, ".proto"),
                     proplists:get_value(module_name_suffix, GpbOpts, "")]),
     GeneratedPB = filename:join(OutDir, ModuleName ++ ".erl"),
-    CompiledPB = filename:join(OutDir, ModuleName ++ ".beam"),
+    CompiledPB = filename:join(BeamOutDir, ModuleName ++ ".beam"),
     ok = filelib:ensure_dir(GeneratedPB),
     case needs_update(Filename, GeneratedPB) of
         true ->
