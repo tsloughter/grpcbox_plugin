@@ -1,12 +1,12 @@
 -module(grpcbox_plugin_prv).
+-behaviour(provider).
 
 -export([init/1, do/1, format_error/1]).
-
--include_lib("providers/include/providers.hrl").
 
 -define(PROVIDER, gen).
 -define(NAMESPACE, grpc).
 -define(DEPS, [{default, app_discovery}]).
+-define(record_to_tuplelist(RecName, Rec), lists:zip(record_info(fields, RecName),tl(tuple_to_list(Rec)))).
 
 %% ===================================================================
 %% Public API
@@ -58,6 +58,7 @@ handle_app(AppInfo, Options, State) ->
     GrpcOpts = rebar_opts:get(Opts, grpc, []),
     GpbOpts = proplists:get_value(gpb_opts, GrpcOpts, []),
     BaseDir = rebar_app_info:dir(AppInfo),
+    GrpcCreateServices = proplists:get_value(create_services, GrpcOpts, true),
     GrpcOptOutDir = proplists:get_value(out_dir, GrpcOpts, filename:join(BaseDir, "src")),
     GrpcOutDir = filename:join(BaseDir, GrpcOptOutDir),
     GpbOutDir = filename:join(BaseDir, proplists:get_value(o, GpbOpts, GrpcOptOutDir)),
@@ -83,9 +84,14 @@ handle_app(AppInfo, Options, State) ->
            end,
     Templates = templates(Type),
     ProtoModules = [compile_pb(Filename, GpbOutDir, BeamOutDir, GpbOpts) || Filename <- ProtoFiles],
-    [gen_services(Templates, ProtoModule, ProtoBeam, GrpcOutDir, GrpcOpts, State)
-     || {ProtoModule, ProtoBeam} <- ProtoModules],
-    ok.
+    case GrpcCreateServices of
+        true ->
+           [gen_services(Templates, ProtoModule, ProtoBeam, GrpcOutDir, GrpcOpts, State)
+             || {ProtoModule, ProtoBeam} <- ProtoModules],
+            ok;
+        _ ->
+            ok
+    end.
 
 compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
     ModuleName = lists:flatten(
@@ -98,16 +104,28 @@ compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
     case needs_update(Filename, GeneratedPB) of
         true ->
             rebar_log:log(info, "Writing ~s", [GeneratedPB]),
-            case gpb_compile:file(Filename, [{rename,{msg_name,snake_case}},
-                                             {rename,{msg_fqname,base_name}},
-                                             use_packages, maps,
-                                             strings_as_binaries, {i, "."},
+            %% unless the calling app overrides, we will default defs_as_proplists to true
+            %% this is because some of the code here and in grpcbox rely on pulling the service definitions
+            %% from the PB file.  That code expects a proplist.
+            %% We allow this to be overridden as perhaps the calling app is only interested in generating
+            %% PB files and none of the services, for example to use with an alternate grpc client which expects maps
+            %% to be returned for the various generated introspection functions
+            %% this use case is very edgy, unless the calling app specifies this as false, it will default to true
+            ForceDefAsProplists =
+                case proplists:get_value(defs_as_proplists, GpbOpts) of
+                    false -> false;
+                    _ -> true
+                end,
+            case gpb_compile:file(Filename, [{rename,{msg_fqname,base_name}},
+                                             use_packages,
+                                             {defs_as_proplists, ForceDefAsProplists},
+                                             {i, "."},
                                              {report_errors, false},
                                              {o, OutDir} | GpbOpts]) of
                 ok ->
                     ok;
                 {error, Error} ->
-                    erlang:error(?PRV_ERROR({gpb, Filename, Error}))
+                    throw({error, format_error(Error)})
             end;
         false ->
             ok
@@ -123,7 +141,7 @@ compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
                     ok;
                 {error, Errors, Warnings} ->
                     log_warnings(Warnings),
-                    throw(?PRV_ERROR({compile_errors, Errors}))
+                    throw({error, format_error(Errors)})
             end;
         false ->
             ok
@@ -154,8 +172,8 @@ gen_service_def(Service, ProtoModule, GrpcConfig, FullOutDir) ->
       methods => [resolve_method(M, ProtoModule) || M <- Methods]}.
 
 resolve_method(Method, ProtoModule) ->
-    MessageType = {message_type, ProtoModule:msg_name_to_fqbin(maps:get(input, Method))},
-    MethodData = lists:flatmap(fun normalize_method_opt/1, maps:to_list(Method)),
+    MessageType = {message_type, ProtoModule:msg_name_to_fqbin(proplists:get_value(input, Method))},
+    MethodData = lists:flatmap(fun normalize_method_opt/1, Method),
     [MessageType | MethodData].
 
 filter_outdated({#{module_name := ModuleName}, TemplateSuffix, _}, OutDir, ProtoBeam) ->
