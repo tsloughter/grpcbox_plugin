@@ -2,7 +2,7 @@
              [{description,"Rebar3 plugin to generate behaviours for grpc services"},
               {vsn,"git"},
               {registered,[]},
-              {applications,[kernel,stdlib,gpb,providers]},
+              {applications,[kernel,stdlib,providers,gpb]},
               {env,[]},
               {modules,[]},
               {licenses,["Apache 2.0"]},
