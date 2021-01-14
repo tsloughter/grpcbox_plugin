@@ -54,12 +54,13 @@ format_error(Reason) ->
 
 handle_app(AppInfo, Options, State) ->
     Opts = rebar_app_info:opts(AppInfo),
-    BeamOutDir = rebar_app_info:ebin_dir(AppInfo),
     GrpcOpts = rebar_opts:get(Opts, grpc, []),
     GpbOpts = proplists:get_value(gpb_opts, GrpcOpts, []),
     BaseDir = rebar_app_info:dir(AppInfo),
     GrpcCreateServices = proplists:get_value(create_services, GrpcOpts, true),
     GrpcOptOutDir = proplists:get_value(out_dir, GrpcOpts, filename:join(BaseDir, "src")),
+    BeamOutDir = proplists:get_value(beam_out_dir, GrpcOpts, rebar_app_info:ebin_dir(AppInfo)),
+    GrpcKeepBeams = proplists:get_value(keep_beams, GrpcOpts, false),
     GrpcOutDir = filename:join(BaseDir, GrpcOptOutDir),
     GpbOutDir = filename:join(BaseDir, proplists:get_value(o, GpbOpts, GrpcOptOutDir)),
 
@@ -91,6 +92,10 @@ handle_app(AppInfo, Options, State) ->
             ok;
         _ ->
             ok
+    end,
+    case GrpcKeepBeams of
+        true -> ok;
+        false -> [file:delete(ProtoBeam) || {_ProtoModule, ProtoBeam} <- ProtoModules]
     end.
 
 compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
@@ -158,6 +163,7 @@ gen_services(Templates, ProtoModule, ProtoBeam, OutDir, GrpcConfig, State) ->
     rebar_log:log(debug, "services: ~p", [Services]),
     [rebar_templater:new(TemplateName, maps:to_list(Service), true, State)
      || {Service, _, TemplateName} <- Services].
+
 
 gen_service_def(Service, ProtoModule, GrpcConfig, FullOutDir) ->
     ServiceModules = proplists:get_value(service_modules, GrpcConfig, []),
