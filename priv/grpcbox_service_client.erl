@@ -24,7 +24,6 @@
                                                       unmarshal_fun=?UNMARSHAL_FUN(Output)}).
 
 {{#methods}}
-%% @doc {{^input_stream}}{{^output_stream}}Unary RPC{{/output_stream}}{{/input_stream}}
 -spec {{method}}({{^input_stream}}{{pb_module}}:{{input}}(){{/input_stream}}) ->
     {{^output_stream}}{{^input_stream}}{ok, {{pb_module}}:{{output}}(), grpcbox:metadata()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}}{{#output_stream}}{{^input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{#input_stream}}{ok, grpcbox_client:stream()}{{/input_stream}}{{/output_stream}} | grpcbox_stream:grpc_error_response() | {error, any()}.
 {{method}}({{^input_stream}}Input{{/input_stream}}) ->
