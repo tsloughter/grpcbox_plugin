@@ -64,18 +64,32 @@ handle_app(AppInfo, Options, State) ->
     GrpcOutDir = filename:join(BaseDir, GrpcOptOutDir),
     GpbOutDir = filename:join(BaseDir, proplists:get_value(o, GpbOpts, GrpcOptOutDir)),
 
-    ProtosDirs = case proplists:get_all_values(protos, Options) of
-                     [] ->
-                         case proplists:get_value(protos, GrpcOpts, [filename:join("priv", "protos")]) of
-                             [H | _] = Ds when is_list(H) ->
-                                 Ds;
-                             D ->
-                                 [D]
-                         end;
-                     Ds ->
-                         Ds
-                 end,
-    ProtoFiles = lists:append([filelib:wildcard(filename:join([BaseDir, D, "*.proto"])) || D <- ProtosDirs]),
+   ProtoFiles = case proplists:get_all_values(proto_files, Options) of
+                 [] ->
+                     case proplists:get_value(proto_files, GrpcOpts) of
+                         undefined ->
+                            ProtosDirs = case proplists:get_all_values(protos, Options) of
+                                             [] ->
+                                                 case proplists:get_value(protos, GrpcOpts, [filename:join("priv", "protos")]) of
+                                                     [H | _] = Ds when is_list(H) ->
+                                                         Ds;
+                                                     D ->
+                                                         [D]
+                                                 end;
+                                             Ds ->
+                                                 Ds
+                                         end,
+
+                            lists:append([filelib:wildcard(filename:join([BaseDir, D, "*.proto"])) || D <- ProtosDirs]);
+                         [H | _] = Ds when is_list(H) ->
+                             Ds;
+                         D ->
+                             [D]
+                     end;
+                 Ds ->
+                     Ds
+             end,
+    ProtoFilesAbs = lists:append([filelib:wildcard(filename:join([BaseDir, D])) || D <- ProtoFiles]),
 
     Type = case proplists:get_value(type, Options, undefined) of
                undefined ->
@@ -84,7 +98,7 @@ handle_app(AppInfo, Options, State) ->
                    T
            end,
     Templates = templates(Type),
-    ProtoModules = [compile_pb(Filename, GpbOutDir, BeamOutDir, GpbOpts) || Filename <- ProtoFiles],
+    ProtoModules = [compile_pb(Filename, GpbOutDir, BeamOutDir, GpbOpts) || Filename <- ProtoFilesAbs],
     case GrpcCreateServices of
         true ->
            [gen_services(Templates, ProtoModule, ProtoBeam, GrpcOutDir, GrpcOpts, State)
