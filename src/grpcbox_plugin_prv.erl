@@ -124,20 +124,12 @@ compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
         true ->
             rebar_log:log(info, "Writing ~s", [GeneratedPB]),
             %% unless the calling app overrides, we will default defs_as_proplists to true
-            %% this is because some of the code here and in grpcbox rely on pulling the service definitions
-            %% from the PB file.  That code expects a proplist.
-            %% We allow this to be overridden as perhaps the calling app is only interested in generating
-            %% PB files and none of the services, for example to use with an alternate grpc client which expects maps
-            %% to be returned for the various generated introspection functions
-            %% this use case is very edgy, unless the calling app specifies this as false, it will default to true
-            ForceDefAsProplists =
-                case proplists:get_value(defs_as_proplists, GpbOpts) of
-                    false -> false;
-                    _ -> true
-                end,
+            %% resulting in service defs using proplists
+            %% Overriding the default with a value of false will result in the service defs using maps
+            GpbDefsAsProplists = proplists:get_value(defs_as_proplists, GpbOpts, true),
             case gpb_compile:file(Filename, [{rename,{msg_fqname,base_name}},
                                              use_packages,
-                                             {defs_as_proplists, ForceDefAsProplists},
+                                             {defs_as_proplists, GpbDefsAsProplists},
                                              {i, "."},
                                              {report_errors, false},
                                              {o, OutDir} | GpbOpts]) of
@@ -192,8 +184,12 @@ gen_service_def(Service, ProtoModule, GrpcConfig, FullOutDir) ->
       methods => [resolve_method(M, ProtoModule) || M <- Methods]}.
 
 resolve_method(Method, ProtoModule) ->
-    MessageType = {message_type, ProtoModule:msg_name_to_fqbin(proplists:get_value(input, Method))},
-    MethodData = lists:flatmap(fun normalize_method_opt/1, Method),
+    %% if the gpb option defs_as_proplists is set to false, then service defs will be maps
+    %% so just force the methods to maps type here
+    rebar_log:log(info, "METHOD: ~p", [Method]),
+    MethodMap = ensure_map(Method),
+    MessageType = {message_type, ProtoModule:msg_name_to_fqbin(maps:get(input, MethodMap))},
+    MethodData = lists:flatmap(fun normalize_method_opt/1, maps:to_list(MethodMap)),
     [MessageType | MethodData].
 
 filter_outdated({#{module_name := ModuleName}, TemplateSuffix, _}, OutDir, ProtoBeam) ->
@@ -247,3 +243,8 @@ log_warnings(Warnings) ->
          rebar_api:warn("Warning building ~s~n", [File]),
          [rebar_api:warn("        ~p: ~s", [Line, M:format_error(E)]) || {Line, M, E} <- Es]
      end || {File, Es} <- Warnings].
+
+ensure_map(S) when is_map(S)->
+    S;
+ensure_map(S) when is_list(S)->
+    maps:from_list(S).
