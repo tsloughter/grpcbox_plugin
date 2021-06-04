@@ -202,7 +202,7 @@ list_snake_case(NameString) ->
     string:to_lower(unicode:characters_to_list(Snaked2)).
 
 needs_update(Source, Artifact) ->
-    filelib:last_modified(Source) > filelib:last_modified(Artifact).
+    filelib:last_modified(Source) >= filelib:last_modified(Artifact).
 
 log_warnings(Warnings) ->
     [begin
