@@ -21,8 +21,10 @@ init(State) ->
                   {deps, ?DEPS},                % The list of dependencies
                   {example, "rebar3 grpc gen"}, % How to use the plugin
                   {opts, [{protos, $p, "protos", string, "directory of protos to build"},
+                          {recursive, $r, "recursive", boolean, "search the protos dir recursively"},
                           {force, $f, "force", boolean, "overwrite already generated modules"},
-                          {type, $t, "type", string, "generate 'client', 'server' or 'all'"}]},
+                          {type, $t, "type", string, "generate 'client', 'server' or 'all'"},
+                          {temp, $T, "temp", string, "temp directory to store generated beam files"}]},
                   {short_desc, "Generates behaviours for grpc services"},
                   {desc, "Generates behaviours for grpc services"}]),
     {ok, rebar_state:add_provider(State, Provider)}.
@@ -52,9 +54,44 @@ format_error({gpb, File, Error}) ->
 format_error(Reason) ->
     io_lib:format("~p", [Reason]).
 
+find_proto_files(Dir) ->
+    filelib:fold_files(Dir, ".proto$", true, fun(F, Acc) -> [ F|Acc ] end, []).
+
+use_temp_beam_dir(AppInfo) ->
+    Opts = rebar_app_info:opts(AppInfo),
+    GrpcOpts = rebar_opts:get(Opts, grpc, []),
+    case proplists:get_value(temp, GrpcOpts, false) of
+        false -> false;
+        V -> { true, V }
+    end.
+        
+    
+get_beam_out_dir(AppInfo) ->
+    case use_temp_beam_dir(AppInfo) of
+        false ->
+            rebar_app_info:ebin_dir(AppInfo);
+        { true, Base } -> 
+            Filename = filename:join(Base, io_lib:format("gprc.~s", [ os:getpid() ] )),
+            ok = file:make_dir(Filename),
+            Filename
+    end.
+
+clean_beam_out_dir(AppInfo, Dir) ->
+    case use_temp_beam_dir(AppInfo) of
+        false ->
+            ok;
+        { true, _ } ->
+            { ok, Files } = file:list_dir(Dir),
+            lists:foreach(fun(File) ->
+                ok = file:delete(filename:join(Dir, File))
+            end, Files),
+            ok = file:del_dir(Dir)
+    end.
+
+            
 handle_app(AppInfo, Options, State) ->
     Opts = rebar_app_info:opts(AppInfo),
-    BeamOutDir = rebar_app_info:ebin_dir(AppInfo),
+    BeamOutDir = get_beam_out_dir(AppInfo),
     GrpcOpts = rebar_opts:get(Opts, grpc, []),
     GpbOpts = proplists:get_value(gpb_opts, GrpcOpts, []),
     BaseDir = rebar_app_info:dir(AppInfo),
@@ -73,7 +110,10 @@ handle_app(AppInfo, Options, State) ->
                      Ds ->
                          Ds
                  end,
-    ProtoFiles = lists:append([filelib:wildcard(filename:join([BaseDir, D, "*.proto"])) || D <- ProtosDirs]),
+    ProtoFiles = case proplists:get_value(recursive, GrpcOpts, false) of
+        false -> lists:append([filelib:wildcard(filename:join([BaseDir, D, "*.proto"])) || D <- ProtosDirs]);
+        true -> lists:append([find_proto_files(filename:join([BaseDir, D])) || D <- ProtosDirs])
+    end,
 
     Type = case proplists:get_value(type, Options, undefined) of
                undefined ->
@@ -85,6 +125,7 @@ handle_app(AppInfo, Options, State) ->
     ProtoModules = [compile_pb(Filename, GpbOutDir, BeamOutDir, GpbOpts) || Filename <- ProtoFiles],
     [gen_services(Templates, ProtoModule, ProtoBeam, GrpcOutDir, GrpcOpts, State)
      || {ProtoModule, ProtoBeam} <- ProtoModules],
+    clean_beam_out_dir(AppInfo, BeamOutDir),
     ok.
 
 compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
