@@ -3,7 +3,7 @@
 %% @end
 %%%-------------------------------------------------------------------
 
-%% this module was generated on {{datetime}} and should not be modified manually
+%% this module was generated and should not be modified manually
 
 -module({{module_name}}_client).
 
