@@ -1,7 +1,7 @@
 -module(grpcbox_plugin_prv).
 
 -export([init/1, do/1, format_error/1]).
--export([canonicalize_path/1]).
+
 -include_lib("providers/include/providers.hrl").
 
 -define(PROVIDER, gen).
