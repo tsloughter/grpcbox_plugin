@@ -62,7 +62,7 @@ handle_app(AppInfo, Options, State) ->
     GrpcOutDir = filename:join(BaseDir, GrpcOptOutDir),
     GpbOutDir = filename:join(BaseDir, proplists:get_value(o, GpbOpts, GrpcOptOutDir)),
 
-    ProtosDirs = case proplists:get_all_values(protos, Options) of
+    ProtosWilds = case proplists:get_all_values(protos, Options) of
                      [] ->
                          case proplists:get_value(protos, GrpcOpts, [filename:join("priv", "protos")]) of
                              [H | _] = Ds when is_list(H) ->
@@ -73,7 +73,9 @@ handle_app(AppInfo, Options, State) ->
                      Ds ->
                          Ds
                  end,
-    ProtoFiles = lists:append([filelib:wildcard(filename:join([BaseDir, D, "*.proto"])) || D <- ProtosDirs]),
+    rebar_log:log(debug, "Wilds ~p", [ProtosWilds]),
+    ProtoFiles = lists:flatmap(mk_expand_wilds(BaseDir), ProtosWilds),
+    rebar_log:log(debug, "Files ~p", [ProtoFiles]),
 
     Type = case proplists:get_value(type, Options, undefined) of
                undefined ->
@@ -87,6 +89,34 @@ handle_app(AppInfo, Options, State) ->
      || {ProtoModule, ProtoBeam} <- ProtoModules],
     ok.
 
+mk_expand_wilds(Basedir) ->
+    fun(Wild) -> expand_wild(Basedir, Wild) end.
+
+expand_wild(Basedir, Wild) ->
+    Path = canonicalize_path(filename:join(Basedir, Wild)),
+    rebar_log:log(debug, "Relative ~p", [{Wild, Basedir, Path}]),
+    case lists:suffix(".proto", Path) of
+        true -> filelib:wildcard(Path);
+        false -> filelib:wildcard(filename:join(Path, "*.proto"))
+    end.
+
+canonicalize_path(Path) ->
+    try "/"++string:join(fixup_path(Path), "/")
+    catch error:Err -> error({Err, Path})
+    end.
+
+fixup_path(Path) ->
+    case re:split(Path, "/", [{return, list}]) of
+        [""|Es] -> lists:reverse(lists:foldl(fun path_element/2, [], Es));
+        _ -> error(path_is_not_absolute)
+    end.
+
+path_element("..", []) -> error(path_is_unsafe);
+path_element("..", [_|Es]) -> Es;
+path_element(".", Es) -> Es;
+path_element("", Es) -> Es;
+path_element(E, Es) -> [E|Es].
+
 compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
     ModuleName = lists:flatten(
                    [proplists:get_value(module_name_prefix, GpbOpts, ""),
@@ -95,6 +125,7 @@ compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
     GeneratedPB = filename:join(OutDir, ModuleName ++ ".erl"),
     CompiledPB = filename:join(BeamOutDir, ModuleName ++ ".beam"),
     ok = filelib:ensure_dir(GeneratedPB),
+    ok = filelib:ensure_dir(CompiledPB),
     case needs_update(Filename, GeneratedPB) of
         true ->
             rebar_log:log(info, "Writing ~s", [GeneratedPB]),
