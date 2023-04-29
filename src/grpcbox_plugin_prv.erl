@@ -54,26 +54,44 @@ format_error(Reason) ->
 
 handle_app(AppInfo, Options, State) ->
     Opts = rebar_app_info:opts(AppInfo),
-    BeamOutDir = rebar_app_info:ebin_dir(AppInfo),
     GrpcOpts = rebar_opts:get(Opts, grpc, []),
     GpbOpts = proplists:get_value(gpb_opts, GrpcOpts, []),
     BaseDir = rebar_app_info:dir(AppInfo),
+    OverrideGpbDDefaults = proplists:get_value(override_gpb_defaults, GrpcOpts, true),
+    GrpcCreateServices = proplists:get_value(create_services, GrpcOpts, true),
     GrpcOptOutDir = proplists:get_value(out_dir, GrpcOpts, filename:join(BaseDir, "src")),
+    BeamOutDir = proplists:get_value(beam_out_dir, GrpcOpts, rebar_app_info:ebin_dir(AppInfo)),
+    GrpcKeepBeams = proplists:get_value(keep_beams, GrpcOpts, false),
     GrpcOutDir = filename:join(BaseDir, GrpcOptOutDir),
     GpbOutDir = filename:join(BaseDir, proplists:get_value(o, GpbOpts, GrpcOptOutDir)),
 
-    ProtosDirs = case proplists:get_all_values(protos, Options) of
-                     [] ->
-                         case proplists:get_value(protos, GrpcOpts, [filename:join("priv", "protos")]) of
-                             [H | _] = Ds when is_list(H) ->
-                                 Ds;
-                             D ->
-                                 [D]
-                         end;
-                     Ds ->
-                         Ds
-                 end,
-    ProtoFiles = lists:append([filelib:wildcard(filename:join([BaseDir, D, "*.proto"])) || D <- ProtosDirs]),
+    ProtoFiles = case proplists:get_all_values(proto_files, Options) of
+                 [] ->
+                     case proplists:get_value(proto_files, GrpcOpts) of
+                         undefined ->
+                            ProtosDirs = case proplists:get_all_values(protos, Options) of
+                                             [] ->
+                                                 case proplists:get_value(protos, GrpcOpts, [filename:join("priv", "protos")]) of
+                                                     [H | _] = Ds when is_list(H) ->
+                                                         Ds;
+                                                     D ->
+                                                         [D]
+                                                 end;
+                                             Ds ->
+                                                 Ds
+                                         end,
+
+                            lists:append([filelib:wildcard(filename:join([BaseDir, D, "*.proto"])) || D <- ProtosDirs]);
+                         [H | _] = Ds when is_list(H) ->
+                             Ds;
+                         D ->
+                             [D]
+                     end;
+                 Ds ->
+                     Ds
+             end,
+    ProtoFilesAbs = lists:append([filelib:wildcard(filename:join([BaseDir, D])) || D <- ProtoFiles]),
+
 
     Type = case proplists:get_value(type, Options, undefined) of
                undefined ->
@@ -82,12 +100,22 @@ handle_app(AppInfo, Options, State) ->
                    T
            end,
     Templates = templates(Type),
-    ProtoModules = [compile_pb(Filename, GpbOutDir, BeamOutDir, GpbOpts) || Filename <- ProtoFiles],
-    [gen_services(Templates, ProtoModule, ProtoBeam, GrpcOutDir, GrpcOpts, State)
-     || {ProtoModule, ProtoBeam} <- ProtoModules],
-    ok.
+    ProtoModules = [compile_pb(Filename, GpbOutDir, BeamOutDir, GpbOpts, OverrideGpbDDefaults) || Filename <- ProtoFilesAbs],
+    case GrpcCreateServices of
+        true ->
+           [gen_services(Templates, ProtoModule, ProtoBeam, GrpcOutDir, GrpcOpts, State)
+             || {ProtoModule, ProtoBeam} <- ProtoModules],
+            ok;
+        _ ->
+            ok
+    end,
+    case GrpcKeepBeams of
+        true -> ok;
+        false -> [file:delete(ProtoBeam) || {_ProtoModule, ProtoBeam} <- ProtoModules]
+    end.
 
-compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
+
+compile_pb(Filename, OutDir, BeamOutDir, GpbOpts, OverrideGpbDDefaults) ->
     ModuleName = lists:flatten(
                    [proplists:get_value(module_name_prefix, GpbOpts, ""),
                     filename:basename(Filename, ".proto"),
@@ -98,12 +126,21 @@ compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
     case needs_update(Filename, GeneratedPB) of
         true ->
             rebar_log:log(info, "Writing ~s", [GeneratedPB]),
-            case gpb_compile:file(Filename, [{rename,{msg_name,snake_case}},
-                                             {rename,{msg_fqname,base_name}},
-                                             use_packages, maps,
-                                             strings_as_binaries, {i, "."},
-                                             {report_errors, false},
-                                             {o, OutDir} | GpbOpts]) of
+            %% if OverrideGpbDDefaults is true,  drop all default gpb options
+            %% and use only those supplied by the calling service
+            %% otherwise append any supplied gpb options to grpcbox defaults
+            FinalGpbOpts =
+                case OverrideGpbDDefaults of
+                    true ->
+                        GpbOpts;
+                    false ->
+                        [{rename,{msg_name,snake_case}},
+                         {rename,{msg_fqname,base_name}},
+                         use_packages, maps,
+                         strings_as_binaries, {i, "."},
+                         {o, OutDir} | GpbOpts]
+                end,
+            case gpb_compile:file(Filename, FinalGpbOpts) of
                 ok ->
                     ok;
                 {error, Error} ->
@@ -154,9 +191,11 @@ gen_service_def(Service, ProtoModule, GrpcConfig, FullOutDir) ->
       methods => [resolve_method(M, ProtoModule) || M <- Methods]}.
 
 resolve_method(Method, ProtoModule) ->
-    MessageType = {message_type, ProtoModule:msg_name_to_fqbin(maps:get(input, Method))},
-    MethodData = lists:flatmap(fun normalize_method_opt/1, maps:to_list(Method)),
-    [MessageType | MethodData].
+    %% handle methods as props or maps
+    rebar_log:log(info, "METHOD: ~p", [Method]),
+    MethodMap = ensure_map(Method),
+    MessageType = {message_type, ProtoModule:msg_name_to_fqbin(maps:get(input, MethodMap))},
+    MethodData = lists:flatmap(fun normalize_method_opt/1, maps:to_list(MethodMap)),    [MessageType | MethodData].
 
 filter_outdated({#{module_name := ModuleName}, TemplateSuffix, _}, OutDir, ProtoBeam) ->
     ModulePath = filename:join([OutDir, ModuleName ++ "_" ++ TemplateSuffix ++ ".erl"]),
@@ -209,3 +248,8 @@ log_warnings(Warnings) ->
          rebar_api:warn("Warning building ~s~n", [File]),
          [rebar_api:warn("        ~p: ~s", [Line, M:format_error(E)]) || {Line, M, E} <- Es]
      end || {File, Es} <- Warnings].
+
+ensure_map(S) when is_map(S)->
+    S;
+ensure_map(S) when is_list(S)->
+    maps:from_list(S).
