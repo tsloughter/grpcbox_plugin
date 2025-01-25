@@ -55,6 +55,7 @@ format_error(Reason) ->
 handle_app(AppInfo, Options, State) ->
     Opts = rebar_app_info:opts(AppInfo),
     BeamOutDir = rebar_app_info:ebin_dir(AppInfo),
+    ok = filelib:ensure_dir(filename:join(BeamOutDir, "fake.beam")),
     GrpcOpts = rebar_opts:get(Opts, grpc, []),
     GpbOpts = proplists:get_value(gpb_opts, GrpcOpts, []),
     BaseDir = rebar_app_info:dir(AppInfo),
