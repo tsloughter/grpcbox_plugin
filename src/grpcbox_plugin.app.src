@@ -5,6 +5,6 @@
               {applications,[kernel,stdlib,gpb,providers]},
               {env,[]},
               {modules,[]},
-              {licenses,["Apache 2.0"]},
+              {licenses,["Apache-2.0"]},
               {links,[{"Github",
                        "https://github.com/tsloughter/grpcbox_plugin"}]}]}.
