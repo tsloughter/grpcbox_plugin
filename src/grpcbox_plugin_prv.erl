@@ -57,11 +57,25 @@ handle_app(AppInfo, Options, State) ->
     BeamOutDir = rebar_app_info:ebin_dir(AppInfo),
     ok = filelib:ensure_dir(filename:join(BeamOutDir, "fake.beam")),
     GrpcOpts = rebar_opts:get(Opts, grpc, []),
-    GpbOpts = proplists:get_value(gpb_opts, GrpcOpts, []),
+    GpbOpts0 = proplists:get_value(gpb_opts, GrpcOpts, []),
     BaseDir = rebar_app_info:dir(AppInfo),
     GrpcOptOutDir = proplists:get_value(out_dir, GrpcOpts, filename:join(BaseDir, "src")),
     GrpcOutDir = filename:join(BaseDir, GrpcOptOutDir),
-    GpbOutDir = filename:join(BaseDir, proplists:get_value(o, GpbOpts, GrpcOptOutDir)),
+    GpbOutDir = filename:join(BaseDir, proplists:get_value(o, GpbOpts0, GrpcOptOutDir)),
+    %% Fix relative paths in gpb_opts to be absolute
+    %% - o_hrl: output directory for .hrl files
+    %% - i: include directories for import resolution
+    GpbOpts1 = case proplists:get_value(o_hrl, GpbOpts0) of
+                   undefined -> GpbOpts0;
+                   HrlDir ->
+                       FullHrlDir = filename:join(BaseDir, HrlDir),
+                       ok = filelib:ensure_dir(filename:join(FullHrlDir, "dummy")),
+                       [{o_hrl, FullHrlDir} | proplists:delete(o_hrl, GpbOpts0)]
+               end,
+    %% Fix {i, ...} paths to be relative to BaseDir
+    GpbOpts = lists:map(fun({i, IDir}) -> {i, filename:join(BaseDir, IDir)};
+                           (Other) -> Other
+                        end, GpbOpts1),
 
     ProtosDirs = case proplists:get_all_values(protos, Options) of
                      [] ->
@@ -99,10 +113,14 @@ compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
     case needs_update(Filename, GeneratedPB) of
         true ->
             rebar_log:log(info, "Writing ~s", [GeneratedPB]),
+            %% Removed hardcoded 'maps' option to allow user's gpb_opts
+            %% to control the data format (maps vs records).
+            %% Also removed hardcoded {i, "."} - user's gpb_opts should provide
+            %% proper include paths.
             case gpb_compile:file(Filename, [{rename,{msg_name,snake_case}},
                                              {rename,{msg_fqname,base_name}},
-                                             use_packages, maps,
-                                             strings_as_binaries, {i, "."},
+                                             use_packages,
+                                             strings_as_binaries,
                                              {report_errors, false},
                                              {o, OutDir} | GpbOpts]) of
                 ok ->
@@ -115,8 +133,14 @@ compile_pb(Filename, OutDir, BeamOutDir, GpbOpts) ->
     end,
     case needs_update(GeneratedPB, CompiledPB) of
         true ->
+            ok = filelib:ensure_dir(CompiledPB),
             GpbIncludeDir = filename:join(code:lib_dir(gpb), "include"),
-            case compile:file(GeneratedPB, [{outdir, BeamOutDir}, {i, GpbIncludeDir}, return_errors]) of
+            %% Add o_hrl directory to include path for records format
+            HrlIncludeDirs = case proplists:get_value(o_hrl, GpbOpts) of
+                                 undefined -> [];
+                                 HrlDir -> [{i, HrlDir}]
+                             end,
+            case compile:file(GeneratedPB, [{outdir, BeamOutDir}, {i, GpbIncludeDir}] ++ HrlIncludeDirs ++ [return_errors]) of
                 {ok, _} ->
                     ok;
                 {ok, _, Warnings} ->
@@ -154,9 +178,21 @@ gen_service_def(Service, ProtoModule, GrpcConfig, FullOutDir) ->
       module_name => ServicePrefix ++ ModuleName ++ ServiceSuffix,
       methods => [resolve_method(M, ProtoModule) || M <- Methods]}.
 
-resolve_method(Method, ProtoModule) ->
+%% Support both map and tuple formats for method data
+%% Map format (from maps mode): #{name => Name, input => Input, output => Output, ...}
+%% Tuple format (from records mode): {rpc, Name, Input, Output, InputStream, OutputStream, Opts}
+resolve_method(Method, ProtoModule) when is_map(Method) ->
     MessageType = {message_type, ProtoModule:msg_name_to_fqbin(maps:get(input, Method))},
     MethodData = lists:flatmap(fun normalize_method_opt/1, maps:to_list(Method)),
+    [MessageType | MethodData];
+resolve_method({rpc, Name, Input, Output, InputStream, OutputStream, _Opts}, ProtoModule) ->
+    MessageType = {message_type, ProtoModule:msg_name_to_fqbin(Input)},
+    MethodData = [{method, list_snake_case(atom_to_list(Name))},
+                  {unmodified_method, atom_to_list(Name)},
+                  {input, atom_to_list(Input)},
+                  {output, atom_to_list(Output)},
+                  {input_stream, InputStream},
+                  {output_stream, OutputStream}],
     [MessageType | MethodData].
 
 filter_outdated({#{module_name := ModuleName}, TemplateSuffix, _}, OutDir, ProtoBeam) ->
